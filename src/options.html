@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Local Immersive Translator</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="page">
+      <header class="header">
+        <div>
+          <h1>本地翻译配置</h1>
+          <p>配置 OpenAI 兼容的本地大模型接口，用于划词、句子和段落翻译。</p>
+        </div>
+        <button id="openOptions" type="button" class="secondary open-options" hidden>打开完整配置页</button>
+      </header>
+
+      <form id="settings" class="panel">
+        <aside class="profile-sidebar">
+          <div class="profile-head">
+            <h2>模型配置</h2>
+            <button id="addProfile" type="button" class="icon-button" title="新增配置">+</button>
+          </div>
+          <div id="profileList" class="profile-list" role="listbox" aria-label="模型配置列表"></div>
+          <div class="profile-tools">
+            <button id="duplicateProfile" type="button" class="secondary">复制当前</button>
+            <button id="deleteProfile" type="button" class="danger">删除</button>
+          </div>
+        </aside>
+
+        <div class="profile-editor">
+          <section class="section">
+            <h2>接口预设</h2>
+            <div class="form-grid three">
+              <label>
+                <span>常见 API 规范</span>
+                <select id="preset" name="preset">
+                  <option value="">自定义 OpenAI 兼容接口</option>
+                </select>
+              </label>
+
+              <label>
+                <span>配置名称</span>
+                <input id="name" name="name" placeholder="例如：LM Studio 本地模型" autocomplete="off">
+              </label>
+
+              <label>
+                <span>当前启用</span>
+                <select id="activeProfileId" name="activeProfileId"></select>
+              </label>
+            </div>
+          </section>
+
+          <section class="section">
+            <h2>模型接口</h2>
+            <div class="form-grid">
+              <label>
+                <span>接口地址</span>
+                <input id="baseUrl" name="baseUrl" placeholder="http://localhost:1234/v1" autocomplete="off">
+              </label>
+
+              <label>
+                <span>接口路径</span>
+                <input id="endpointPath" name="endpointPath" placeholder="/chat/completions" autocomplete="off">
+              </label>
+
+              <label>
+                <span>模型名</span>
+                <input id="model" name="model" placeholder="local-model" autocomplete="off">
+              </label>
+
+              <label>
+                <span>优先级</span>
+                <input id="priority" name="priority" type="number" min="1" step="1" placeholder="1">
+              </label>
+
+              <label>
+                <span>鉴权方式</span>
+                <select id="authType" name="authType">
+                  <option value="bearer">Bearer Token</option>
+                  <option value="none">不使用鉴权</option>
+                </select>
+              </label>
+
+              <label>
+                <span>已部署模型</span>
+                <select id="availableModels" name="availableModels">
+                  <option value="">先获取模型列表</option>
+                </select>
+              </label>
+
+              <div class="field-actions">
+                <span>模型发现</span>
+                <div class="button-row">
+                  <button id="fetchModels" type="button" class="secondary">获取模型列表</button>
+                </div>
+              </div>
+
+              <label class="span-2">
+                <span>API Key</span>
+                <input id="apiKey" name="apiKey" type="password" placeholder="本地模型通常可留空" autocomplete="off">
+              </label>
+            </div>
+          </section>
+
+          <section class="section">
+            <h2>翻译参数</h2>
+            <div class="form-grid three">
+              <label>
+                <span>目标语言</span>
+                <input id="targetLanguage" name="targetLanguage" placeholder="简体中文" autocomplete="off">
+              </label>
+
+              <label>
+                <span>温度</span>
+                <input id="temperature" name="temperature" type="number" min="0" max="2" step="0.1">
+              </label>
+
+              <label>
+                <span>超时毫秒</span>
+                <input id="timeoutMs" name="timeoutMs" type="number" min="3000" step="1000">
+              </label>
+            </div>
+          </section>
+
+          <section class="section">
+            <h2>提示词</h2>
+            <label>
+              <span>系统提示词</span>
+              <textarea id="systemPrompt" name="systemPrompt" rows="7"></textarea>
+            </label>
+          </section>
+
+          <section class="section">
+            <h2>前端交互</h2>
+            <div class="form-grid three">
+              <label>
+                <span>译文显示</span>
+                <select id="displayMode" name="displayMode">
+                  <option value="bilingual">双语对照</option>
+                  <option value="translationOnly">仅显示译文</option>
+                  <option value="sourceCollapsed">原文折叠</option>
+                </select>
+              </label>
+
+              <label>
+                <span>双语布局</span>
+                <select id="bilingualLayout" name="bilingualLayout">
+                  <option value="vertical">上下对照</option>
+                  <option value="horizontal">左右对照</option>
+                </select>
+              </label>
+
+              <label>
+                <span>悬停翻译</span>
+                <select id="hoverTranslate" name="hoverTranslate">
+                  <option value="true">启用</option>
+                  <option value="false">关闭</option>
+                </select>
+              </label>
+
+              <label>
+                <span>悬停触发键</span>
+                <select id="hoverModifier" name="hoverModifier">
+                  <option value="ctrl">Ctrl</option>
+                  <option value="alt">Alt</option>
+                  <option value="shift">Shift</option>
+                  <option value="none">无需按键</option>
+                </select>
+              </label>
+
+              <label>
+                <span>输入框翻译</span>
+                <select id="inputTranslate" name="inputTranslate">
+                  <option value="true">启用</option>
+                  <option value="false">关闭</option>
+                </select>
+              </label>
+
+              <label>
+                <span>触发空格次数</span>
+                <input id="inputTriggerSpaces" name="inputTriggerSpaces" type="number" min="2" max="6" step="1">
+              </label>
+            </div>
+          </section>
+
+          <footer class="actions">
+            <div>
+              <button type="submit">保存配置</button>
+              <button id="test" type="button" class="secondary">测试当前模型</button>
+            </div>
+            <output id="status"></output>
+          </footer>
+          </div>
+      </form>
+    </main>
+
+    <script src="options.js"></script>
+  </body>
+</html>

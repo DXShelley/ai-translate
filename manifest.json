@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Local Immersive Translator",
+  "description": "Selection, sentence, and paragraph translation with an OpenAI-compatible local model.",
+  "version": "1.0.0",
+  "permissions": ["storage", "contextMenus", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "src/options.html",
+  "action": {
+    "default_title": "Local Immersive Translator",
+    "default_popup": "src/popup.html"
+  },
+  "commands": {
+    "translate-selection": {
+      "suggested_key": {
+        "default": "Alt+T"
+      },
+      "description": "Translate current selection"
+    }
+  }
+}

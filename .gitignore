@@ -1,0 +1,8 @@
+.chrome-dev-profile/
+/vendor/
+*.log
+*.tmp
+*.bak
+node_modules/
+dist/
+build/
