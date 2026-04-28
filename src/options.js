@@ -236,6 +236,7 @@ const presetSelect = document.querySelector("#preset");
 const availableModelsSelect = document.querySelector("#availableModels");
 const importConfigFile = document.querySelector("#importConfigFile");
 const requestLogList = document.querySelector("#requestLogList");
+const profileText = document.querySelector("#profileText");
 const browserApi = globalThis.litBrowser;
 const extensionApiAvailable = Boolean(browserApi?.runtime?.id && browserApi?.storage?.sync);
 
@@ -244,6 +245,7 @@ let activeProfileId = DEFAULT_PROFILE.id;
 let selectedProfileId = DEFAULT_PROFILE.id;
 let settings = { ...DEFAULT_CONFIG.settings };
 let fetchedModels = [];
+let renderingProfile = false;
 
 initPageMode();
 initPresets();
@@ -313,6 +315,14 @@ document.querySelector("#exportLogs").addEventListener("click", async () => {
 
 document.querySelector("#clearLogs").addEventListener("click", async () => {
   await clearRequestLogs();
+});
+
+document.querySelector("#applyProfileText").addEventListener("click", () => {
+  applyProfileTextToForm();
+});
+
+profileText.addEventListener("blur", () => {
+  applyProfileTextToForm(false);
 });
 
 document.querySelector("#exportConfig").addEventListener("click", () => {
@@ -639,8 +649,8 @@ async function renderRequestLogs() {
       </summary>
       <div class="log-detail-grid">
         <label><span>请求 URL</span><pre>${escapeHtml(log.url || "")}</pre></label>
-        <label><span>输入</span><pre>${escapeHtml(JSON.stringify(log.requestBody || {}, null, 2))}</pre></label>
-        <label><span>输出</span><pre>${escapeHtml(log.responseText || JSON.stringify(log.responseBody || {}, null, 2))}</pre></label>
+        <label><span>输入</span><pre>${escapeHtml(formatLogContent(log.requestBody))}</pre></label>
+        <label><span>输出</span><pre>${escapeHtml(formatLogContent(log.responseBody ?? log.responseText))}</pre></label>
         ${log.error ? `<label><span>错误</span><pre>${escapeHtml(log.error)}</pre></label>` : ""}
       </div>
     </details>
@@ -674,6 +684,19 @@ function formatLogTime(value) {
   const date = new Date(value || Date.now());
   if (Number.isNaN(date.getTime())) return "";
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+}
+
+function formatLogContent(value) {
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (!text) return "";
+    try {
+      return JSON.stringify(JSON.parse(text), null, 2);
+    } catch {
+      return text;
+    }
+  }
+  return JSON.stringify(value ?? {}, null, 2);
 }
 
 function renderProfileList() {
@@ -722,6 +745,7 @@ function escapeHtml(value) {
 }
 
 function fillForm(profile) {
+  renderingProfile = true;
   presetSelect.value = profile.presetId && PRESETS.some((preset) => preset.id === profile.presetId)
     ? profile.presetId
     : "";
@@ -735,6 +759,12 @@ function fillForm(profile) {
       field.value = value;
     }
   }
+  fillProfileText(profile);
+  renderingProfile = false;
+}
+
+function fillProfileText(profile) {
+  profileText.value = JSON.stringify(profileTextSnapshot(profile), null, 2);
 }
 
 function fillSettings(nextSettings) {
@@ -774,7 +804,7 @@ function persistCurrentForm() {
 function getProfileFromForm() {
   const current = getSelectedProfile();
   const model = availableModelsSelect.value || current?.model || DEFAULT_PROFILE.model;
-  return {
+  const formProfile = {
     name: current?.name || uniqueProfileName(model, current?.id),
     apiType: "openai-chat",
     presetId: current?.presetId || inferPresetIdFromProfile(current) || "",
@@ -791,6 +821,68 @@ function getProfileFromForm() {
     timeoutMs: Number(form.elements.timeoutMs.value || DEFAULT_PROFILE.timeoutMs),
     priority: clampPriority(getRadioValue("priority") || DEFAULT_PROFILE.priority),
     systemPrompt: form.elements.systemPrompt.value.trim() || DEFAULT_PROFILE.systemPrompt
+  };
+  return normalizeProfile({
+    ...formProfile,
+    ...readProfileTextOverride()
+  });
+}
+
+function readProfileTextOverride() {
+  const text = profileText.value.trim();
+  if (!text) return {};
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    setStatus(`模型配置文本不是有效 JSON：${error?.message || String(error)}`, true);
+    return {};
+  }
+}
+
+function applyProfileTextToForm(showSuccess = true) {
+  const text = profileText.value.trim();
+  if (!text) return;
+  try {
+    const parsed = normalizeProfile(JSON.parse(text));
+    renderingProfile = true;
+    for (const [key, value] of Object.entries(parsed)) {
+      const field = form.elements[key];
+      if (!field) continue;
+      if (key === "priority") {
+        setRadioValue("priority", String(clampPriority(value)));
+      } else if (key !== "model") {
+        field.value = String(value);
+      }
+    }
+    resetAvailableModels(parsed.model);
+    renderingProfile = false;
+    if (showSuccess) setStatus("已将模型配置文本应用到表单");
+  } catch (error) {
+    renderingProfile = false;
+    setStatus(`模型配置文本解析失败：${error?.message || String(error)}`, true);
+  }
+}
+
+function profileTextSnapshot(profile) {
+  const normalized = normalizeProfile(profile);
+  return {
+    name: normalized.name,
+    apiType: normalized.apiType,
+    presetId: normalized.presetId,
+    baseUrl: normalized.baseUrl,
+    endpointPath: normalized.endpointPath,
+    apiKey: normalized.apiKey,
+    model: normalized.model,
+    authType: normalized.authType,
+    translationMode: normalized.translationMode,
+    sourceLanguage: normalized.sourceLanguage,
+    targetLanguage: normalized.targetLanguage,
+    thinkingMode: normalized.thinkingMode,
+    temperature: normalized.temperature,
+    timeoutMs: normalized.timeoutMs,
+    priority: normalized.priority,
+    systemPrompt: normalized.systemPrompt
   };
 }
 
