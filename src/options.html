@@ -20,19 +20,24 @@
         <aside class="profile-sidebar">
           <div class="profile-head">
             <h2>模型配置</h2>
-            <button id="addProfile" type="button" class="icon-button" title="新增配置">+</button>
+            <div class="profile-head-actions">
+              <button id="addProfile" type="button" class="icon-button" title="新增配置" aria-label="新增配置">+</button>
+              <button id="duplicateProfile" type="button" class="icon-button" title="复制当前" aria-label="复制当前">⧉</button>
+              <button id="deleteProfile" type="button" class="icon-button danger-icon" title="删除当前" aria-label="删除当前">×</button>
+              <button id="exportConfig" type="button" class="icon-button" title="导出全部配置" aria-label="导出全部配置">⇩</button>
+              <button id="importConfig" type="button" class="icon-button" title="导入配置" aria-label="导入配置">⇧</button>
+              <input id="importConfigFile" type="file" accept="application/json,.json" hidden>
+            </div>
           </div>
-          <div id="profileList" class="profile-list" role="listbox" aria-label="模型配置列表"></div>
-          <div class="profile-tools">
-            <button id="duplicateProfile" type="button" class="secondary">复制当前</button>
-            <button id="deleteProfile" type="button" class="danger">删除</button>
+          <div class="profile-body">
+            <div id="profileList" class="profile-list" role="listbox" aria-label="模型配置列表"></div>
           </div>
         </aside>
 
         <div class="profile-editor">
           <section class="section">
             <h2>接口预设</h2>
-            <div class="form-grid three">
+            <div class="form-grid">
               <label>
                 <span>常见 API 规范</span>
                 <select id="preset" name="preset">
@@ -40,15 +45,14 @@
                 </select>
               </label>
 
-              <label>
-                <span>配置名称</span>
-                <input id="name" name="name" placeholder="例如：LM Studio 本地模型" autocomplete="off">
-              </label>
-
-              <label>
-                <span>当前启用</span>
-                <select id="activeProfileId" name="activeProfileId"></select>
-              </label>
+              <fieldset class="priority-field">
+                <span>优先级</span>
+                <div class="segmented">
+                  <label><input type="radio" name="priority" value="1"><span>P1</span></label>
+                  <label><input type="radio" name="priority" value="2"><span>P2</span></label>
+                  <label><input type="radio" name="priority" value="3"><span>P3</span></label>
+                </div>
+              </fieldset>
             </div>
           </section>
 
@@ -66,21 +70,16 @@
               </label>
 
               <label>
-                <span>模型名</span>
-                <input id="model" name="model" placeholder="local-model" autocomplete="off">
-              </label>
-
-              <label>
-                <span>优先级</span>
-                <input id="priority" name="priority" type="number" min="1" step="1" placeholder="1">
-              </label>
-
-              <label>
                 <span>鉴权方式</span>
                 <select id="authType" name="authType">
                   <option value="bearer">Bearer Token</option>
                   <option value="none">不使用鉴权</option>
                 </select>
+              </label>
+
+              <label>
+                <span>API Key</span>
+                <input id="apiKey" name="apiKey" type="password" placeholder="本地模型通常可留空" autocomplete="off">
               </label>
 
               <label>
@@ -96,11 +95,6 @@
                   <button id="fetchModels" type="button" class="secondary">获取模型列表</button>
                 </div>
               </div>
-
-              <label class="span-2">
-                <span>API Key</span>
-                <input id="apiKey" name="apiKey" type="password" placeholder="本地模型通常可留空" autocomplete="off">
-              </label>
             </div>
           </section>
 
@@ -108,8 +102,38 @@
             <h2>翻译参数</h2>
             <div class="form-grid three">
               <label>
-                <span>目标语言</span>
-                <input id="targetLanguage" name="targetLanguage" placeholder="简体中文" autocomplete="off">
+                <span>翻译方向</span>
+                <select id="translationMode" name="translationMode">
+                  <option value="auto-zh-en">自动中英互译</option>
+                  <option value="manual">手动指定</option>
+                </select>
+              </label>
+
+              <label>
+                <span>原文语言</span>
+                <input id="sourceLanguage" name="sourceLanguage" placeholder="自动检测" autocomplete="off">
+              </label>
+
+              <label>
+                <span>译文语言</span>
+                <select id="targetLanguage" name="targetLanguage">
+                  <option value="简体中文">简体中文</option>
+                  <option value="繁體中文">繁體中文</option>
+                  <option value="English">English</option>
+                  <option value="日本語">日本語</option>
+                  <option value="한국어">한국어</option>
+                  <option value="Français">Français</option>
+                  <option value="Deutsch">Deutsch</option>
+                  <option value="Español">Español</option>
+                </select>
+              </label>
+
+              <label>
+                <span>思考模式</span>
+                <select id="thinkingMode" name="thinkingMode">
+                  <option value="false">关闭</option>
+                  <option value="true">开启</option>
+                </select>
               </label>
 
               <label>
@@ -133,9 +157,22 @@
           </section>
 
           <section class="section">
+            <div class="section-title-row">
+              <h2>模型配置文本</h2>
+              <div class="button-row">
+                <button id="applyProfileText" type="button" class="secondary">应用文本</button>
+              </div>
+            </div>
+            <label>
+              <span>JSON 配置</span>
+              <textarea id="profileText" class="profile-text" rows="10" spellcheck="false"></textarea>
+            </label>
+          </section>
+
+          <section class="section">
             <h2>前端交互</h2>
             <div class="form-grid three">
-              <label>
+              <label hidden>
                 <span>译文显示</span>
                 <select id="displayMode" name="displayMode">
                   <option value="bilingual">双语对照</option>
@@ -144,7 +181,7 @@
                 </select>
               </label>
 
-              <label>
+              <label hidden>
                 <span>双语布局</span>
                 <select id="bilingualLayout" name="bilingualLayout">
                   <option value="vertical">上下对照</option>
@@ -179,10 +216,30 @@
               </label>
 
               <label>
+                <span>请求日志</span>
+                <select id="requestLogging" name="requestLogging">
+                  <option value="false">关闭</option>
+                  <option value="true">开启</option>
+                </select>
+              </label>
+
+              <label>
                 <span>触发空格次数</span>
                 <input id="inputTriggerSpaces" name="inputTriggerSpaces" type="number" min="2" max="6" step="1">
               </label>
             </div>
+          </section>
+
+          <section class="section log-section">
+            <div class="section-title-row">
+              <h2>请求日志</h2>
+              <div class="button-row">
+                <button id="refreshLogs" type="button" class="secondary">刷新</button>
+                <button id="exportLogs" type="button" class="secondary">导出</button>
+                <button id="clearLogs" type="button" class="secondary danger">清空</button>
+              </div>
+            </div>
+            <div id="requestLogList" class="request-log-list"></div>
           </section>
 
           <footer class="actions">
@@ -196,6 +253,7 @@
       </form>
     </main>
 
+    <script src="browser-adapter.js"></script>
     <script src="options.js"></script>
   </body>
 </html>
