@@ -358,6 +358,13 @@ textarea {
   resize: vertical;
 }
 
+.profile-text {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  min-height: 260px;
+  white-space: pre;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
