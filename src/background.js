@@ -1,4 +1,5 @@
 importScripts("vendor/jsonrepair.min.js");
+importScripts("browser-adapter.js");
 
 const DEFAULT_PROFILE = {
   id: "default",
@@ -9,12 +10,15 @@ const DEFAULT_PROFILE = {
   apiKey: "",
   model: "local-model",
   authType: "bearer",
+  translationMode: "auto-zh-en",
+  sourceLanguage: "自动检测",
   targetLanguage: "简体中文",
+  thinkingMode: false,
   temperature: 0.2,
   timeoutMs: 45000,
   priority: 1,
   systemPrompt:
-    "You are a precise translation engine. Translate faithfully, keep formatting where useful, preserve names, code, URLs, numbers, and technical terms. Return only the translation."
+    "You are a precise translation engine. Translate faithfully, keep formatting where useful, preserve names, code, URLs, numbers, and technical terms."
 };
 
 const DEFAULT_CONFIG = {
@@ -26,36 +30,39 @@ const DEFAULT_CONFIG = {
     hoverModifier: "ctrl",
     inputTranslate: true,
     inputTriggerSpaces: 3,
-    bilingualLayout: "vertical"
+    bilingualLayout: "vertical",
+    requestLogging: false
   }
 };
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
+const browserApi = globalThis.litBrowser;
+
+browserApi.raw.runtime.onInstalled.addListener(() => {
+  browserApi.contextMenus.create({
     id: "translate-selection",
     title: "翻译选中文本",
     contexts: ["selection"]
   });
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+browserApi.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== "translate-selection" || !tab?.id) return;
-  chrome.tabs.sendMessage(tab.id, {
+  browserApi.tabs.sendMessage(tab.id, {
     type: "LIT_TRANSLATE_SELECTION",
-    mode: "selection",
+    mode: "auto",
     text: info.selectionText || ""
   });
 });
 
-chrome.commands.onCommand.addListener((command, tab) => {
+browserApi.commands.onCommand.addListener((command, tab) => {
   if (command !== "translate-selection" || !tab?.id) return;
-  chrome.tabs.sendMessage(tab.id, {
+  browserApi.tabs.sendMessage(tab.id, {
     type: "LIT_TRANSLATE_SELECTION",
-    mode: "selection"
+    mode: "auto"
   });
 });
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+browserApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "LIT_TRANSLATE") {
     translate(message.payload)
       .then((result) => sendResponse({ ok: true, result }))
@@ -86,7 +93,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function getConfig() {
-  const saved = await chrome.storage.sync.get(null);
+  const saved = await browserApi.storage.sync.get(null);
   const profiles = Array.isArray(saved.profiles) && saved.profiles.length
     ? saved.profiles.map(normalizeProfile)
     : [normalizeProfile({ ...DEFAULT_PROFILE, ...saved })];
@@ -113,10 +120,17 @@ async function translate(payload) {
   }
 
   return tryProfiles(config, async (profile) => {
+    const targetLanguage = resolveTargetLanguage(text, profile);
+    const requestContext = {
+      ...context,
+      sourceLanguage: resolveSourceLanguage(profile)
+    };
+    const messages = buildTranslationMessages(profile, text, mode, requestContext, targetLanguage);
     const body = await requestChatCompletion(
       profile,
-      buildTranslationMessages(profile, text, mode, context),
-      Number(profile.temperature) || 0
+      messages,
+      Number(profile.temperature) || 0,
+      { type: "translate", settings: config.settings }
     );
 
     const content = extractChatContent(body);
@@ -124,10 +138,13 @@ async function translate(payload) {
       throw new Error("接口未返回 choices[0].message.content");
     }
 
+    const normalized = normalizeTranslationContent(content, text);
     return {
       source: text,
-      translation: String(content).trim(),
+      translation: normalized.translation,
+      alignments: normalized.alignments,
       mode,
+      targetLanguage,
       model: profile.model,
       profileName: profile.name
     };
@@ -143,14 +160,15 @@ async function getWordInfo(payload) {
   }
 
   return tryProfiles(config, async (profile) => {
-    const body = await requestChatCompletion(profile, [
+    const messages = [
       {
         role: "system",
         content:
           "You are a bilingual English dictionary. Return only valid compact JSON. Do not wrap it in markdown."
       },
       { role: "user", content: buildWordInfoPrompt(word) }
-    ], 0);
+    ];
+    const body = await requestChatCompletion(profile, messages, 0, { type: "word", settings: config.settings });
 
     const content = extractChatContent(body);
     if (!content) {
@@ -207,17 +225,24 @@ function buildWordInfoPrompt(word) {
     '  "word": string,',
     '  "phoneticUS": string,',
     '  "phoneticUK": string,',
+    '  "partsOfSpeech": [{"pos": string, "meaning": string}],',
+    '  "inflections": string[],',
     '  "definitionsZh": string[],',
     '  "definitionsEn": string[],',
+    '  "webDefinitions": string[],',
     '  "synonyms": string[],',
     '  "antonyms": string[],',
     '  "examples": [{"en": string, "zh": string}]',
     "}",
     "Rules:",
     "- Return one valid JSON object only.",
+    "- Do not output reasoning, analysis, hidden thoughts, or <think> tags.",
     "- Do not add pinyin.",
     "- definitionsZh must be Chinese meanings only.",
+    '- partsOfSpeech should contain concise Chinese meanings grouped by part of speech, for example {"pos":"n.","meaning":"招呼，问候"}.',
+    '- inflections should contain concise Chinese labels, for example "复数 hellos".',
     "- definitionsEn must be English definitions only.",
+    '- webDefinitions should contain concise common online meanings in Chinese, for example "电脑".',
     "- synonyms and antonyms must be flat string arrays.",
     "- Use IPA for phoneticUS and phoneticUK.",
     "- Keep arrays concise, maximum 5 items each. Include 2 classic, natural example sentences."
@@ -225,7 +250,7 @@ function buildWordInfoPrompt(word) {
 }
 
 function normalizeWordInfo(content) {
-  const text = String(content || "").trim();
+  const text = stripThinkingText(content);
   const jsonText = stripJsonFence(text);
   try {
     const repaired = globalThis.JSONRepair.jsonrepair(jsonText);
@@ -236,18 +261,74 @@ function normalizeWordInfo(content) {
   }
 }
 
+function normalizeTranslationContent(content, source) {
+  const text = stripThinkingText(content);
+  const jsonText = stripJsonFence(text);
+  try {
+    const repaired = globalThis.JSONRepair.jsonrepair(jsonText);
+    const parsed = JSON.parse(repaired);
+    const translation = String(parsed?.translation || parsed?.target || parsed?.text || "").trim();
+    if (!translation) throw new Error("missing translation");
+    return {
+      translation,
+      alignments: []
+    };
+  } catch {
+    return {
+      translation: text,
+      alignments: []
+    };
+  }
+}
+
+function normalizeAlignments(value, source, translation) {
+  if (!Array.isArray(value)) return [];
+  const sourceText = String(source || "");
+  const targetText = String(translation || "");
+  return value.map((item) => {
+    const sourceStart = clampNumber(Math.floor(Number(item?.sourceStart)), 0, sourceText.length);
+    const sourceEnd = clampNumber(Math.floor(Number(item?.sourceEnd)), sourceStart, sourceText.length);
+    const targetStart = clampNumber(Math.floor(Number(item?.targetStart)), 0, targetText.length);
+    const targetEnd = clampNumber(Math.floor(Number(item?.targetEnd)), targetStart, targetText.length);
+    if (sourceEnd <= sourceStart || targetEnd <= targetStart) return null;
+    return {
+      sourceStart,
+      sourceEnd,
+      targetStart,
+      targetEnd,
+      sourceText: String(item?.sourceText || sourceText.slice(sourceStart, sourceEnd)),
+      targetText: String(item?.targetText || targetText.slice(targetStart, targetEnd)),
+      confidence: clampNumber(Number(item?.confidence || 0), 0, 1)
+    };
+  }).filter(Boolean);
+}
+
 function formatWordInfoJson(parsed) {
   return {
     word: String(parsed?.word || ""),
     phoneticUS: formatPhonetic(parsed?.phoneticUS),
     phoneticUK: formatPhonetic(parsed?.phoneticUK),
+    partsOfSpeech: normalizePartsOfSpeech(parsed?.partsOfSpeech || parsed?.pos || parsed?.meanings),
+    inflections: normalizeArray(parsed?.inflections || parsed?.forms),
     definitionsZh: normalizeArray(parsed?.definitionsZh),
     definitionsEn: normalizeArray(parsed?.definitionsEn),
+    webDefinitions: normalizeArray(parsed?.webDefinitions || parsed?.networkDefinitions || parsed?.webMeanings),
     synonyms: normalizeArray(parsed?.synonyms),
     antonyms: normalizeArray(parsed?.antonyms),
     examples: normalizeExamples(parsed?.examples),
     raw: parsed
   };
+}
+
+function normalizePartsOfSpeech(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    if (typeof item === "string") return { pos: "", meaning: item.trim() };
+    return {
+      pos: String(item?.pos || item?.partOfSpeech || item?.type || "").trim(),
+      meaning: String(item?.meaning || item?.zh || item?.definition || "").trim()
+    };
+  }).filter((item) => item.pos || item.meaning);
 }
 
 function normalizeArray(value) {
@@ -272,6 +353,13 @@ function stripJsonFence(text) {
   return String(text || "")
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function stripThinkingText(content) {
+  return String(content || "")
+    .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
+    .replace(/<thinking\b[^>]*>[\s\S]*?<\/thinking>/gi, "")
     .trim();
 }
 
@@ -301,6 +389,12 @@ function normalizeProfile(profile) {
     id: profile?.id || crypto.randomUUID(),
     endpointPath: profile?.endpointPath || "/chat/completions",
     authType: profile?.authType || "bearer",
+    translationMode: ["auto-zh-en", "manual"].includes(profile?.translationMode)
+      ? profile.translationMode
+      : DEFAULT_PROFILE.translationMode,
+    sourceLanguage: String(profile?.sourceLanguage || DEFAULT_PROFILE.sourceLanguage).trim() || DEFAULT_PROFILE.sourceLanguage,
+    targetLanguage: String(profile?.targetLanguage || DEFAULT_PROFILE.targetLanguage).trim() || DEFAULT_PROFILE.targetLanguage,
+    thinkingMode: profile?.thinkingMode === true,
     priority: clampNumber(Number(profile?.priority || DEFAULT_PROFILE.priority), 1, 999)
   };
 }
@@ -319,26 +413,29 @@ async function tryProfiles(config, task) {
 
 function getProfilesByPriority(config) {
   const active = config.activeProfile;
+  const order = new Map(config.profiles.map((profile, index) => [profile.id, index]));
   const rest = config.profiles
     .filter((profile) => profile.id !== active.id)
-    .sort((a, b) => Number(a.priority || 999) - Number(b.priority || 999));
+    .sort((a, b) =>
+      Number(a.priority || 999) - Number(b.priority || 999) ||
+      Number(order.get(a.id) ?? 999) - Number(order.get(b.id) ?? 999)
+    );
   return [active, ...rest];
 }
 
-async function requestChatCompletion(profile, messages, temperature) {
+async function requestChatCompletion(profile, messages, temperature, meta = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Number(profile.timeoutMs) || 45000);
+  const requestBody = buildChatRequestBody(profile, messages, temperature);
+  const startedAt = Date.now();
+  const url = joinUrl(profile.baseUrl, profile.endpointPath);
 
   try {
-    const response = await fetch(joinUrl(profile.baseUrl, profile.endpointPath), {
+    const response = await fetch(url, {
       method: "POST",
       signal: controller.signal,
       headers: buildHeaders(profile),
-      body: JSON.stringify({
-        model: profile.model,
-        temperature,
-        messages
-      })
+      body: JSON.stringify(requestBody)
     });
 
     const bodyText = await response.text();
@@ -351,13 +448,114 @@ async function requestChatCompletion(profile, messages, temperature) {
 
     if (!response.ok) {
       const detail = body?.error?.message || body?.message || bodyText || response.statusText;
+      await saveRequestLog(meta.settings, {
+        type: meta.type || "chat",
+        ok: false,
+        durationMs: Date.now() - startedAt,
+        profile,
+        url,
+        requestBody,
+        responseStatus: response.status,
+        responseBody: body,
+        responseText: bodyText,
+        error: detail
+      });
       throw new Error(`接口请求失败 (${response.status}): ${detail}`);
     }
 
+    await saveRequestLog(meta.settings, {
+      type: meta.type || "chat",
+      ok: true,
+      durationMs: Date.now() - startedAt,
+      profile,
+      url,
+      requestBody,
+      responseStatus: response.status,
+      responseBody: body,
+      responseText: bodyText
+    });
     return body;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function saveRequestLog(settings, entry) {
+  if (!settings?.requestLogging) return;
+  const saved = await browserApi.storage.local.get("requestLogs").catch(() => ({}));
+  const logs = Array.isArray(saved.requestLogs) ? saved.requestLogs : [];
+  const item = {
+    id: `log-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    createdAt: new Date().toISOString(),
+    type: entry.type,
+    ok: entry.ok,
+    durationMs: entry.durationMs,
+    profileName: entry.profile?.name || "",
+    model: entry.profile?.model || "",
+    presetId: entry.profile?.presetId || "",
+    url: entry.url,
+    requestBody: entry.requestBody,
+    responseStatus: entry.responseStatus,
+    responseBody: entry.responseBody,
+    responseText: entry.responseText,
+    error: entry.error || ""
+  };
+  await browserApi.storage.local.set({ requestLogs: [item, ...logs].slice(0, 50) }).catch(() => {});
+}
+
+function buildChatRequestBody(profile, messages, temperature) {
+  const body = {
+    model: profile.model,
+    temperature,
+    messages
+  };
+  Object.assign(body, buildThinkingModeParams(profile));
+  return body;
+}
+
+function buildThinkingModeParams(profile) {
+  const presetId = profile.presetId || inferProviderFromBaseUrl(profile.baseUrl);
+  const model = String(profile.model || "").toLowerCase();
+  const thinkingEnabled = profile.thinkingMode === true;
+
+  if (presetId === "dashscope" || presetId === "siliconflow") {
+    return { enable_thinking: thinkingEnabled };
+  }
+
+  if (presetId === "vllm" && /qwen|qwq/i.test(model)) {
+    return { chat_template_kwargs: { enable_thinking: thinkingEnabled } };
+  }
+
+  if (presetId === "kimi" || presetId === "zhipu") {
+    return { thinking: { type: thinkingEnabled ? "enabled" : "disabled" } };
+  }
+
+  if (presetId === "openrouter") {
+    return thinkingEnabled ? {} : { reasoning: { effort: "none", exclude: true } };
+  }
+
+  if ((presetId === "openai" || presetId === "codeplan") && /^gpt-5/.test(model)) {
+    return { reasoning_effort: thinkingEnabled ? "low" : "minimal" };
+  }
+
+  if (presetId === "deepseek") {
+    return thinkingEnabled ? { thinking: { type: "enabled" } } : {};
+  }
+
+  return {};
+}
+
+function inferProviderFromBaseUrl(baseUrl) {
+  const value = String(baseUrl || "").toLowerCase();
+  if (value.includes("dashscope.aliyuncs.com")) return "dashscope";
+  if (value.includes("siliconflow.cn")) return "siliconflow";
+  if (value.includes("moonshot.ai")) return "kimi";
+  if (value.includes("bigmodel.cn")) return "zhipu";
+  if (value.includes("openrouter.ai")) return "openrouter";
+  if (value.includes("api.openai.com")) return "openai";
+  if (value.includes("api.deepseek.com")) return "deepseek";
+  if (value.includes("codingplanx.ai")) return "codeplan";
+  return "";
 }
 
 function extractChatContent(body) {
@@ -376,15 +574,43 @@ function buildHeaders(config) {
   return headers;
 }
 
-function buildTranslationMessages(profile, text, mode, context) {
+function buildTranslationMessages(profile, text, mode, context, targetLanguage = resolveTargetLanguage(text, profile)) {
   if (isHyTranslationModel(profile)) {
-    return [{ role: "user", content: buildHyTranslationPrompt(text, profile.targetLanguage, context) }];
+    return [{ role: "user", content: buildHyTranslationPrompt(text, targetLanguage, context) }];
   }
 
   return [
-    { role: "system", content: profile.systemPrompt },
-    { role: "user", content: buildUserPrompt(text, mode, profile.targetLanguage, context) }
+    {
+      role: "system",
+      content: normalizeTranslationSystemPrompt(profile.systemPrompt)
+    },
+    { role: "user", content: buildUserPrompt(text, mode, targetLanguage, context) }
   ];
+}
+
+function resolveTargetLanguage(text, profile) {
+  if (profile.translationMode === "manual") {
+    return profile.targetLanguage || DEFAULT_PROFILE.targetLanguage;
+  }
+  return isMostlyChinese(text) ? "English" : (profile.targetLanguage || DEFAULT_PROFILE.targetLanguage);
+}
+
+function resolveSourceLanguage(profile) {
+  return profile.translationMode === "manual" ? profile.sourceLanguage : "";
+}
+
+function isMostlyChinese(text) {
+  const normalized = String(text || "").replace(/\s+/g, "");
+  if (!normalized) return false;
+  const chineseCount = (normalized.match(/[\u3400-\u9fff]/g) || []).length;
+  const latinCount = (normalized.match(/[A-Za-z]/g) || []).length;
+  return chineseCount > 0 && chineseCount / Math.max(1, chineseCount + latinCount) >= 0.3;
+}
+
+function normalizeTranslationSystemPrompt(prompt) {
+  return String(prompt || "")
+    .replace(/\s*Return only the translation\.?\s*$/i, "")
+    .trim();
 }
 
 function isHyTranslationModel(profile) {
@@ -393,7 +619,9 @@ function isHyTranslationModel(profile) {
 
 function buildHyTranslationPrompt(text, targetLanguage, context = {}) {
   const lines = [
-    `请将下面内容翻译成${targetLanguage}，只输出译文。`,
+    context.sourceLanguage && context.sourceLanguage !== "自动检测"
+      ? `请将下面内容从${context.sourceLanguage}翻译成${targetLanguage}，只输出译文。`
+      : `请将下面内容翻译成${targetLanguage}，只输出译文。`,
     "不要解释。不要添加替代方案。当换行具有意义时，请保持原有的换行格式。"
   ];
 
@@ -428,8 +656,10 @@ function buildUserPrompt(text, mode, targetLanguage, context = {}) {
     : "";
 
   return [
-    `Translate the following ${labels[mode] || "text"} into ${targetLanguage}.`,
-    "Do not explain. Do not add alternatives. Keep line breaks when they carry meaning.",
+    buildTranslateInstruction(labels[mode] || "text", targetLanguage, context.sourceLanguage),
+    "Return only the translation text.",
+    "Do not explain. Do not add alternatives. Do not output reasoning, analysis, hidden thoughts, or <think> tags.",
+    "Keep line breaks when they carry meaning.",
     "Use the surrounding context and previous translations to keep terms, names, pronouns, and style consistent.",
     context.scope ? "" : null,
     context.scope ? "Surrounding context:" : null,
@@ -441,6 +671,13 @@ function buildUserPrompt(text, mode, targetLanguage, context = {}) {
     "Text to translate:",
     text
   ].filter((line) => line !== null).join("\n");
+}
+
+function buildTranslateInstruction(label, targetLanguage, sourceLanguage) {
+  if (sourceLanguage && sourceLanguage !== "自动检测") {
+    return `Translate the following ${label} from ${sourceLanguage} into ${targetLanguage}.`;
+  }
+  return `Translate the following ${label} into ${targetLanguage}.`;
 }
 
 function joinUrl(baseUrl, path) {

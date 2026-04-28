@@ -16,13 +16,19 @@
     mode: "selection",
     busy: false,
     settings: { ...DEFAULT_SETTINGS },
+    translationCacheSalt: "",
     lastHoverText: "",
     inputSpaceCount: 0,
     closeToken: 0,
     pointerInsidePopover: false,
+    suppressPopoverAutoCloseUntil: 0,
     cache: Object.create(null),
     wordCache: Object.create(null),
+    pendingTranslations: Object.create(null),
     session: null,
+    activeTranslationKey: "",
+    activeWordKey: "",
+    wordHistoryIndex: -1,
     recentResults: [],
     runtimeAvailable: true
   };
@@ -32,6 +38,7 @@
   let toolbar;
   let panel;
   let dragState = null;
+  let suppressNextPopoverClick = false;
 
   document.addEventListener("pointerup", handlePointerUp, true);
   document.addEventListener("pointerover", debounce(handlePointerOver, 260), true);
@@ -40,14 +47,18 @@
   loadSettings();
   loadRecentResults();
 
-  chrome.runtime.onMessage.addListener((message) => {
+  const browserApi = globalThis.litBrowser;
+
+  browserApi.runtime.onMessage.addListener((message) => {
     if (message?.type !== "LIT_TRANSLATE_SELECTION") return;
     translateFromMessage(message);
   });
 
-  chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "sync" || !changes.settings) return;
-    state.settings = { ...DEFAULT_SETTINGS, ...(changes.settings.newValue || {}) };
+  browserApi.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "sync") return;
+    if (changes.settings || changes.profiles || changes.activeProfileId) {
+      loadSettings();
+    }
   });
 
   function handlePointerUp(event) {
@@ -58,6 +69,8 @@
 
   function handleSelectionChange() {
     const selection = window.getSelection();
+    if (isSelectionInsidePopover(selection)) return;
+    if (isPopoverAutoCloseSuppressed()) return;
     if (
       (!selection || selection.isCollapsed || !selection.toString().trim()) &&
       !state.pointerInsidePopover &&
@@ -74,8 +87,9 @@
 
     state.sourceText = selectedText;
     state.sourceNode = selection.anchorNode;
+    const initialMode = detectSelectionMode(selection, selectedText);
     if (!state.session || state.session.texts.selection !== normalizeText(selectedText)) {
-      state.session = buildTranslationSession(selection.anchorNode, selectedText, "selection");
+      state.session = buildTranslationSession(selection.anchorNode, selectedText, initialMode);
       state.cache = state.session.cache;
     }
     ensureUi();
@@ -85,11 +99,12 @@
     popover.hidden = false;
     toolbar.hidden = false;
 
-    requestTranslation("selection", selectedText);
+    requestTranslation(initialMode, resolveTextForMode(initialMode));
   }
 
   async function translateFromMessage(message) {
     ensureUi();
+    const selection = window.getSelection();
     const text = message.text || window.getSelection()?.toString().trim();
     if (!text) {
       showPanel("selection", "", "", "没有选中文本");
@@ -97,11 +112,12 @@
     }
 
     state.sourceText = text;
-    state.mode = message.mode || "selection";
-    state.session = buildTranslationSession(window.getSelection()?.anchorNode || state.sourceNode, text, state.mode);
+    state.sourceNode = selection?.anchorNode || state.sourceNode;
+    state.mode = resolveRequestedMode(message.mode, selection, text);
+    state.session = buildTranslationSession(state.sourceNode, text, state.mode);
     state.cache = state.session.cache;
     placePanelNearViewportCenter();
-    await requestTranslation(state.mode, text);
+    await requestTranslation(state.mode, resolveTextForMode(state.mode));
   }
 
   function ensureUi() {
@@ -116,6 +132,11 @@
           <button data-mode="selection" title="翻译选中文字">划词</button>
           <button data-mode="sentence" title="翻译当前句子">句子</button>
           <button data-mode="paragraph" title="翻译当前段落">段落</button>
+          <div class="lit-word-search" role="search">
+            <input class="lit-word-search-input" type="search" placeholder="查单词" autocomplete="off" spellcheck="false">
+            <button class="lit-word-history" data-word-history="prev" type="button" title="上一个单词">‹</button>
+            <button class="lit-word-history" data-word-history="next" type="button" title="下一个单词">›</button>
+          </div>
           <button class="lit-close" title="关闭">×</button>
         </div>
         <section class="lit-panel" hidden>
@@ -139,10 +160,16 @@
 
     popover.addEventListener("pointerleave", () => {
       state.pointerInsidePopover = false;
-      if (!dragState) hidePopover();
+      if (!dragState && !isPopoverAutoCloseSuppressed()) hidePopover();
     });
 
     toolbar.addEventListener("click", (event) => {
+      const historyButton = event.target.closest("button[data-word-history]");
+      if (historyButton) {
+        showWordHistory(historyButton.dataset.wordHistory);
+        return;
+      }
+
       const button = event.target.closest("button[data-mode]");
       if (!button) return;
       const mode = button.dataset.mode;
@@ -158,17 +185,16 @@
       hidePopover();
     });
 
-    root.addEventListener("pointerover", (event) => {
-      const token = event.target.closest?.(".lit-token");
-      if (!token || !isInsideTranslator(token)) return;
-      highlightAlignedToken(token.dataset.alignIndex);
-    }, true);
-
-    root.addEventListener("pointerout", (event) => {
-      if (event.target.closest?.(".lit-token")) clearAlignedTokenHighlight();
-    }, true);
+    toolbar.querySelector(".lit-word-search-input").addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      queryWordFromToolbar(event.target.value);
+    });
 
     popover.addEventListener("pointerdown", startPanelDrag);
+    popover.addEventListener("pointerup", handlePopoverWordLookup);
+    popover.addEventListener("copy", handlePopoverWordCopy, true);
+    popover.addEventListener("click", suppressPanelClickAfterDrag, true);
   }
 
   async function requestTranslation(mode, text) {
@@ -181,8 +207,9 @@
     const cached = state.cache[cacheKey];
     if (cached?.status === "done") {
       setActiveMode(mode);
+      state.activeTranslationKey = cacheKey;
       showPanel(mode, text, cached.result);
-      if (mode === "selection" && isSingleWord(text)) requestWordInfo(text);
+      if (mode === "selection" && isEnglishWord(text)) requestWordInfo(text);
       return;
     }
     const reusable = findReusableTranslation(mode, text);
@@ -194,44 +221,38 @@
         result: reusable.result
       };
       setActiveMode(mode);
+      state.activeTranslationKey = cacheKey;
       showPanel(mode, text, reusable.result);
-      if (mode === "selection" && isSingleWord(text)) requestWordInfo(text);
+      if (mode === "selection" && isEnglishWord(text)) requestWordInfo(text);
       return;
     }
     if (cached?.status === "loading") {
       setActiveMode(mode);
+      state.activeTranslationKey = cacheKey;
       showPanel(mode, text, "翻译中...");
+      await waitForPendingTranslation(cacheKey, mode, text);
       return;
     }
     const closeToken = state.closeToken;
     state.cache[cacheKey] = { status: "loading", mode, source: text };
     setActiveMode(mode);
+    state.activeTranslationKey = cacheKey;
     showPanel(mode, text, "翻译中...");
 
     try {
-      const response = await chrome.runtime.sendMessage({
-        type: "LIT_TRANSLATE",
-        payload: {
-          mode,
-          text,
-          context: buildRequestContext(mode, text)
-        }
-      });
-
-      if (!response?.ok) {
-        throw new Error(response?.error || "翻译失败");
-      }
+      const response = await fetchTranslation(cacheKey, mode, text);
+      const result = normalizeTranslationResult(response.result, text);
 
       state.cache[cacheKey] = {
         status: "done",
         mode,
         source: text,
-        result: response.result.translation
+        result
       };
-      if (!popover.hidden && closeToken === state.closeToken && isActiveTranslation(mode, text)) {
-        showPanel(mode, text, response.result.translation);
-        saveRecentResult(mode, text, response.result.translation);
-        if (mode === "selection" && isSingleWord(text)) {
+      if (!popover.hidden && closeToken === state.closeToken && isActiveTranslation(cacheKey)) {
+        showPanel(mode, text, result);
+        saveRecentResult(mode, text, result);
+        if (mode === "selection" && isEnglishWord(text)) {
           requestWordInfo(text);
         }
       }
@@ -241,7 +262,45 @@
         return;
       }
       state.cache[cacheKey] = { status: "error", mode, source: text, error: error?.message || String(error) };
-      if (!popover.hidden && closeToken === state.closeToken && isActiveTranslation(mode, text)) {
+      if (!popover.hidden && closeToken === state.closeToken && isActiveTranslation(cacheKey)) {
+        showPanel(mode, text, "", error?.message || String(error));
+      }
+    }
+  }
+
+  async function fetchTranslation(cacheKey, mode, text) {
+    if (!state.pendingTranslations[cacheKey]) {
+      state.pendingTranslations[cacheKey] = browserApi.runtime.sendMessage({
+        type: "LIT_TRANSLATE",
+        payload: {
+          mode,
+          text,
+          context: buildRequestContext(mode, text)
+        }
+      }).finally(() => {
+        delete state.pendingTranslations[cacheKey];
+      });
+    }
+
+    const response = await state.pendingTranslations[cacheKey];
+    if (!response?.ok) {
+      throw new Error(response?.error || "翻译失败");
+    }
+    return response;
+  }
+
+  async function waitForPendingTranslation(cacheKey, mode, text) {
+    try {
+      const response = await fetchTranslation(cacheKey, mode, text);
+      const result = normalizeTranslationResult(response.result, text);
+      state.cache[cacheKey] = { status: "done", mode, source: text, result };
+      if (!popover.hidden && isActiveTranslation(cacheKey)) {
+        showPanel(mode, text, result);
+        saveRecentResult(mode, text, result);
+      }
+    } catch (error) {
+      state.cache[cacheKey] = { status: "error", mode, source: text, error: error?.message || String(error) };
+      if (!popover.hidden && isActiveTranslation(cacheKey)) {
         showPanel(mode, text, "", error?.message || String(error));
       }
     }
@@ -249,14 +308,21 @@
 
   async function loadSettings() {
     try {
-      const response = await chrome.runtime.sendMessage({ type: "LIT_GET_CONFIG" });
+      const response = await browserApi.runtime.sendMessage({ type: "LIT_GET_CONFIG" });
       state.settings = { ...DEFAULT_SETTINGS, ...(response?.config?.settings || {}) };
+      const nextSalt = buildTranslationCacheSalt(response?.config?.activeProfile);
+      if (state.translationCacheSalt && state.translationCacheSalt !== nextSalt && state.session) {
+        state.session.cache = Object.create(null);
+        state.cache = state.session.cache;
+      }
+      state.translationCacheSalt = nextSalt;
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         handleRuntimeInvalidated();
         return;
       }
       state.settings = { ...DEFAULT_SETTINGS };
+      state.translationCacheSalt = "";
     }
   }
 
@@ -299,7 +365,7 @@
     showPanel("input", text, "翻译中...");
 
     try {
-      const response = await chrome.runtime.sendMessage({
+      const response = await browserApi.runtime.sendMessage({
         type: "LIT_TRANSLATE",
         payload: { mode: "input", text }
       });
@@ -351,7 +417,29 @@
     if (!selectedText) return sentences[0]?.trim() || clean;
 
     const selected = normalizeText(selectedText);
-    return sentences.find((sentence) => sentence.includes(selected))?.trim() || selected;
+    const selectedFolded = foldText(selected);
+    return sentences.find((sentence) => foldText(sentence).includes(selectedFolded))?.trim() || selected;
+  }
+
+  function detectSelectionMode(selection, selectedText) {
+    const text = normalizeText(selectedText);
+    if (isWordSelection(text)) return "selection";
+    if (isParagraphSelection(selection, text)) return "paragraph";
+    return "sentence";
+  }
+
+  function resolveRequestedMode(mode, selection, selectedText) {
+    if (mode === "selection" || mode === "sentence" || mode === "paragraph") return mode;
+    return detectSelectionMode(selection, selectedText);
+  }
+
+  function isParagraphSelection(selection, selectedText) {
+    if (!selectedText) return false;
+    if (/[\r\n]/.test(selection?.toString?.() || "")) return true;
+    const sentenceCount = (selectedText.match(/[.!?。！？；;]/g) || []).length;
+    if (sentenceCount >= 2) return true;
+    const paragraph = findParagraphText(selection?.anchorNode || state.sourceNode);
+    return paragraph && normalizeCacheText(paragraph) === normalizeCacheText(selectedText);
   }
 
   function buildTranslationSession(anchorNode, selectedText, triggerMode = "selection") {
@@ -387,25 +475,31 @@
           key,
           mode: entry.mode,
           source: entry.source,
-          translation: entry.result
+          translation: getTranslationText(entry.result)
         }))
     };
   }
 
-  function isActiveTranslation(mode, text) {
-    const activeMode = toolbar?.querySelector("button.lit-active")?.dataset.mode;
-    const activeText = state.session?.texts?.[mode] || resolveTextForMode(mode);
-    return activeMode === mode && normalizeText(activeText) === normalizeText(text);
+  function isActiveTranslation(cacheKey) {
+    return state.activeTranslationKey === cacheKey;
   }
 
   function findReusableTranslation(mode, text) {
-    const normalized = normalizeText(text);
-    return Object.values(state.session?.cache || {}).find((entry) =>
-      entry?.status === "done" &&
-      entry.result &&
-      normalizeText(entry.source) === normalized &&
-      entry.mode !== mode
-    );
+    const normalized = normalizeCacheText(text);
+    for (const entry of Object.values(state.session?.cache || {})) {
+      if (entry?.status !== "done" || !entry.result || entry.mode === mode) continue;
+      if (normalizeCacheText(entry.source) === normalized) return entry;
+      const extracted = extractReusableTranslation(entry, text);
+      if (extracted) {
+        return {
+          status: "done",
+          mode,
+          source: text,
+          result: extracted
+        };
+      }
+    }
+    return null;
   }
 
   function showPanel(mode, source, result, error) {
@@ -415,15 +509,21 @@
     panel.hidden = false;
     panel.dataset.displayMode = state.settings.displayMode;
     panel.dataset.layout = state.settings.bilingualLayout || "vertical";
-    renderAlignedText(panel.querySelector(".lit-source"), source, "source");
+    const normalizedResult = error ? { translation: error, alignments: [] } : normalizeTranslationResult(result, source);
+    renderPlainText(panel.querySelector(".lit-source"), source);
     const resultNode = panel.querySelector(".lit-result");
-    renderAlignedText(resultNode, error || result, "result");
+    renderPlainText(resultNode, normalizedResult.translation);
     resultNode.classList.toggle("lit-error", Boolean(error));
     const wordInfoNode = panel.querySelector(".lit-word-info");
     wordInfoNode.hidden = true;
     wordInfoNode.textContent = "";
-    if (mode === "selection" && isSingleWord(source)) {
+    if (mode === "selection" && isEnglishWord(source)) {
+      state.activeWordKey = `word:${normalizeWord(source)}`;
+      const searchInput = toolbar?.querySelector(".lit-word-search-input");
+      if (searchInput) searchInput.value = normalizeWordQuery(source);
       renderWordInfo(source);
+    } else {
+      state.activeWordKey = "";
     }
     requestAnimationFrame(() => keepPopoverInViewport());
   }
@@ -493,7 +593,8 @@
   }
 
   function startPanelDrag(event) {
-    if (event.target.closest("button, .lit-source, .lit-result, .lit-word-info")) return;
+    if (event.button !== 0) return;
+    if (!event.target.closest?.(".lit-source, .lit-result")) return;
     event.preventDefault();
 
     const rect = popover.getBoundingClientRect();
@@ -511,6 +612,7 @@
 
   function dragPanel(event) {
     if (!dragState || event.pointerId !== dragState.pointerId) return;
+    suppressNextPopoverClick = true;
 
     const rect = popover.getBoundingClientRect();
     const left = clamp(event.clientX - dragState.offsetX, 8, window.innerWidth - rect.width - 8);
@@ -523,12 +625,21 @@
     if (!dragState || event.pointerId !== dragState.pointerId) return;
 
     popover.classList.remove("lit-dragging");
-    popover.releasePointerCapture(event.pointerId);
+    if (popover.hasPointerCapture(event.pointerId)) {
+      popover.releasePointerCapture(event.pointerId);
+    }
     popover.removeEventListener("pointermove", dragPanel);
     popover.removeEventListener("pointerup", stopPanelDrag);
     popover.removeEventListener("pointercancel", stopPanelDrag);
     dragState = null;
     state.pointerInsidePopover = isPointInsidePopover(event.clientX, event.clientY);
+  }
+
+  function suppressPanelClickAfterDrag(event) {
+    if (!suppressNextPopoverClick) return;
+    suppressNextPopoverClick = false;
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   function getSelectionRect(selection) {
@@ -556,9 +667,22 @@
   function hidePopover() {
     if (!popover) return;
     state.closeToken += 1;
+    state.activeTranslationKey = "";
+    state.activeWordKey = "";
     popover.hidden = true;
     if (panel) panel.hidden = true;
     hideToolbar();
+  }
+
+  function suppressPopoverAutoClose(duration = 600) {
+    state.suppressPopoverAutoCloseUntil = Math.max(
+      state.suppressPopoverAutoCloseUntil,
+      Date.now() + duration
+    );
+  }
+
+  function isPopoverAutoCloseSuppressed() {
+    return Date.now() < state.suppressPopoverAutoCloseUntil;
   }
 
   function setActiveMode(mode) {
@@ -572,6 +696,15 @@
     return Boolean(element?.closest?.(`#${ROOT_ID}`));
   }
 
+  function isSelectionInsidePopover(selection) {
+    return Boolean(
+      selection &&
+      !selection.isCollapsed &&
+      isInsideTranslator(selection.anchorNode) &&
+      isInsideTranslator(selection.focusNode)
+    );
+  }
+
   function isPointInsidePopover(x, y) {
     if (!popover || popover.hidden) return false;
     const rect = popover.getBoundingClientRect();
@@ -582,9 +715,18 @@
     return String(text || "").replace(/\s+/g, " ").trim();
   }
 
+  function normalizeCacheText(text) {
+    return foldText(normalizeText(text));
+  }
+
+  function foldText(text) {
+    return String(text || "").toLocaleLowerCase();
+  }
+
   async function requestWordInfo(word) {
     const normalizedWord = normalizeWord(word);
     const cacheKey = `word:${normalizedWord}`;
+    state.activeWordKey = cacheKey;
     const cached = state.wordCache[cacheKey] || state.cache[cacheKey] || findRecentWordInfo(normalizedWord);
     if (cached?.status === "done" || cached?.status === "loading") {
       state.cache[cacheKey] = cached;
@@ -598,7 +740,7 @@
     renderWordInfo(word);
 
     try {
-      const response = await chrome.runtime.sendMessage({
+      const response = await browserApi.runtime.sendMessage({
       type: "LIT_WORD_INFO",
         payload: { word: normalizedWord }
       });
@@ -607,7 +749,7 @@
       state.cache[cacheKey] = { status: "done", result: response.result };
       state.wordCache[cacheKey] = state.cache[cacheKey];
       saveRecentWordInfo(normalizedWord, response.result);
-      renderWordInfo(word);
+      if (state.activeWordKey === cacheKey) renderWordInfo(word);
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         handleRuntimeInvalidated();
@@ -615,8 +757,84 @@
       }
       state.cache[cacheKey] = { status: "error", error: error?.message || String(error) };
       state.wordCache[cacheKey] = state.cache[cacheKey];
-      renderWordInfo(word);
+      if (state.activeWordKey === cacheKey) renderWordInfo(word);
     }
+  }
+
+  function queryWordFromToolbar(word) {
+    const text = normalizeWordQuery(word);
+    if (!text) return;
+    suppressPopoverAutoClose();
+    const input = toolbar?.querySelector(".lit-word-search-input");
+    if (input) input.value = text;
+    state.sourceText = text;
+    state.mode = "selection";
+    if (!state.session) {
+      state.session = buildTranslationSession(state.sourceNode, text, "selection");
+      state.cache = state.session.cache;
+    }
+    state.session.texts.selection = text;
+    requestTranslation("selection", text);
+  }
+
+  function handlePopoverWordLookup(event) {
+    if (dragState || event.target.closest?.("button, input, select, textarea, .lit-source, .lit-result")) return;
+    const word = getSelectedLookupWord();
+    if (!word) return;
+    queryWordFromToolbar(word);
+  }
+
+  function handlePopoverWordCopy(event) {
+    if (event.target.closest?.("button, input, select, textarea, .lit-source, .lit-result")) return;
+    const word = getSelectedLookupWord();
+    if (!word) return;
+    queryWordFromToolbar(word);
+  }
+
+  function getSelectedLookupWord() {
+    const selection = window.getSelection();
+    if (!isLookupSelection(selection)) return "";
+    const word = normalizeWordQuery(selection.toString());
+    return isEnglishWord(word) ? word : "";
+  }
+
+  function isLookupSelection(selection) {
+    return Boolean(selection && !selection.isCollapsed && isSelectionInsideLookupArea(selection));
+  }
+
+  function isSelectionInsideLookupArea(selection) {
+    return isNodeInsideLookupArea(selection.anchorNode) && isNodeInsideLookupArea(selection.focusNode);
+  }
+
+  function isNodeInsideLookupArea(node) {
+    const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    return Boolean(element?.closest?.(".lit-source, .lit-result, .lit-word-info"));
+  }
+
+  function showWordHistory(direction) {
+    const words = getWordHistory();
+    if (!words.length) return;
+    const currentValue = normalizeWordQuery(toolbar?.querySelector(".lit-word-search-input")?.value || "");
+    let index = words.findIndex((word) => normalizeWord(word) === normalizeWord(currentValue));
+    if (index < 0) index = state.wordHistoryIndex >= 0 ? state.wordHistoryIndex : 0;
+    index += direction === "prev" ? 1 : -1;
+    if (index < 0) index = words.length - 1;
+    if (index >= words.length) index = 0;
+    state.wordHistoryIndex = index;
+    queryWordFromToolbar(words[index]);
+  }
+
+  function getWordHistory() {
+    const seen = new Set();
+    return state.recentResults
+      .filter((entry) => entry.type === "word" && (entry.word || entry.source))
+      .map((entry) => normalizeWordQuery(entry.word || entry.source))
+      .filter((word) => {
+        const key = normalizeWord(word);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
   }
 
   function renderWordInfo(word) {
@@ -624,6 +842,7 @@
     if (!node) return;
 
     const key = `word:${normalizeWord(word)}`;
+    if (state.activeWordKey && state.activeWordKey !== key) return;
     const entry = state.cache[key] || state.wordCache[key] || findRecentWordInfo(normalizeWord(word));
     if (!entry) {
       node.hidden = true;
@@ -657,7 +876,9 @@
         <span>美 ${escapeHtml(info?.phoneticUS || "-")} <button data-speak-word="${escapeHtml(info?.word || "")}" data-lang="en-US" title="美式朗读">美音</button></span>
         <span>英 ${escapeHtml(info?.phoneticUK || "-")} <button data-speak-word="${escapeHtml(info?.word || "")}" data-lang="en-GB" title="英式朗读">英音</button></span>
       </div>`,
-      formatDefinitions("中文释义", info?.definitionsZh),
+      formatPartsOfSpeech(info?.partsOfSpeech),
+      formatInflections(info?.inflections),
+      formatChineseDefinitions(info?.definitionsZh, info?.webDefinitions),
       formatDefinitions("英文释义", info?.definitionsEn),
       formatExamples(info?.examples),
       formatWordList("同义词", info?.synonyms),
@@ -667,9 +888,9 @@
   }
 
   document.addEventListener("click", (event) => {
-    const button = event.target.closest?.("[data-speak-word]");
+    const button = event.target.closest?.("[data-speak-text], [data-speak-word]");
     if (!button || !isInsideTranslator(button)) return;
-    speakWord(button.dataset.speakWord || state.sourceText, button.dataset.lang || "en-US");
+    speakWord(button.dataset.speakText || button.dataset.speakWord || state.sourceText, button.dataset.lang || "en-US");
   }, true);
 
   function formatWordList(label, items) {
@@ -678,10 +899,38 @@
     return `<div class="lit-word-row"><strong>${label}</strong><span>${list.map(escapeHtml).join("、")}</span></div>`;
   }
 
+  function formatPartsOfSpeech(items) {
+    const list = Array.isArray(items) ? items.filter((item) => item?.pos || item?.meaning) : [];
+    if (!list.length) return "";
+    return `<div class="lit-word-row lit-pos-list">${list.map((item) => `
+      <div class="lit-pos-item">
+        <span class="lit-pos-tag">${escapeHtml(item.pos || "-")}</span>
+        <span class="lit-pos-meaning">${escapeHtml(item.meaning || "")}</span>
+      </div>
+    `).join("")}</div>`;
+  }
+
+  function formatInflections(items) {
+    const list = Array.isArray(items) ? items.filter(Boolean) : [];
+    if (!list.length) return "";
+    return `<div class="lit-inflections">[ ${list.map(escapeHtml).join(" ")} ]</div>`;
+  }
+
   function formatDefinitions(label, items) {
     const list = Array.isArray(items) ? items.filter(Boolean) : [];
     if (!list.length) return "";
     return `<div class="lit-word-row"><strong>${label}</strong><ul>${list.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>`;
+  }
+
+  function formatChineseDefinitions(definitions, webDefinitions) {
+    const normalList = Array.isArray(definitions) ? definitions.filter(Boolean) : [];
+    const webList = Array.isArray(webDefinitions) ? webDefinitions.filter(Boolean) : [];
+    if (!normalList.length && !webList.length) return "";
+    return `<div class="lit-word-row lit-zh-definitions">
+      <strong>中文释义</strong>
+      ${normalList.length ? `<ul>${normalList.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
+      ${webList.length ? `<div class="lit-web-definitions"><span>网络</span>${webList.map(escapeHtml).join("；")}</div>` : ""}
+    </div>`;
   }
 
   function formatExamples(items) {
@@ -691,13 +940,20 @@
   }
 
   function formatExample(item) {
-    if (typeof item === "string") return `<div class="lit-example-en">${escapeHtml(item)}</div>`;
+    if (typeof item === "string") return formatExampleText(item);
     const en = item?.en || item?.sentence || "";
     const zh = item?.zh || item?.translation || "";
     return [
-      en ? `<div class="lit-example-en">${escapeHtml(en)}</div>` : "",
+      en ? formatExampleText(en) : "",
       zh ? `<div class="lit-example-zh">${escapeHtml(zh)}</div>` : ""
     ].join("");
+  }
+
+  function formatExampleText(text) {
+    return `<div class="lit-example-en">
+      <span>${escapeHtml(text)}</span>
+      <button data-speak-text="${escapeHtml(text)}" data-lang="en-US" title="朗读示例">朗读</button>
+    </div>`;
   }
 
   function speakWord(word, lang) {
@@ -716,7 +972,7 @@
 
   async function loadRecentResults() {
     try {
-      const saved = await chrome.storage.local.get("recentResults");
+      const saved = await browserApi.storage.local.get("recentResults");
       state.recentResults = Array.isArray(saved.recentResults) ? saved.recentResults : [];
       for (const entry of state.recentResults) {
         if (entry.type === "word" && entry.wordInfo) {
@@ -732,11 +988,12 @@
   }
 
   async function saveRecentResult(mode, source, result) {
+    const normalizedResult = normalizeTranslationResult(result, source);
     const item = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       mode,
       source,
-      result,
+      result: normalizedResult,
       createdAt: Date.now()
     };
     state.recentResults = [
@@ -744,7 +1001,7 @@
       ...state.recentResults.filter((entry) => !(entry.mode === mode && entry.source === source))
     ].slice(0, 100);
     try {
-      await chrome.storage.local.set({ recentResults: state.recentResults });
+      await browserApi.storage.local.set({ recentResults: state.recentResults });
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         handleRuntimeInvalidated();
@@ -770,7 +1027,7 @@
       ...state.recentResults.filter((entry) => !(entry.type === "word" && entry.word === word))
     ].slice(0, 100);
     try {
-      await chrome.storage.local.set({ recentResults: state.recentResults });
+      await browserApi.storage.local.set({ recentResults: state.recentResults });
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         handleRuntimeInvalidated();
@@ -788,8 +1045,11 @@
       word: info?.word || word,
       phoneticUS: info?.phoneticUS || "",
       phoneticUK: info?.phoneticUK || "",
+      partsOfSpeech: Array.isArray(info?.partsOfSpeech) ? info.partsOfSpeech : [],
+      inflections: Array.isArray(info?.inflections) ? info.inflections : [],
       definitionsZh: Array.isArray(info?.definitionsZh) ? info.definitionsZh : [],
       definitionsEn: Array.isArray(info?.definitionsEn) ? info.definitionsEn : [],
+      webDefinitions: Array.isArray(info?.webDefinitions) ? info.webDefinitions : [],
       synonyms: Array.isArray(info?.synonyms) ? info.synonyms : [],
       antonyms: Array.isArray(info?.antonyms) ? info.antonyms : [],
       examples: Array.isArray(info?.examples) ? info.examples : [],
@@ -799,7 +1059,7 @@
 
   function isRuntimeAvailable() {
     try {
-      return state.runtimeAvailable && Boolean(chrome?.runtime?.id);
+      return state.runtimeAvailable && Boolean(browserApi?.runtime?.id);
     } catch (error) {
       if (isExtensionContextInvalidated(error)) handleRuntimeInvalidated();
       return false;
@@ -816,54 +1076,161 @@
     hidePopover();
   }
 
-  function renderAlignedText(container, text, side) {
-    container.innerHTML = "";
-    const tokens = tokenizeForAlignment(text);
-    if (tokens.length < 2) {
-      container.textContent = text;
-      return;
+  function renderPlainText(container, text) {
+    container.textContent = text;
+  }
+
+  function normalizeTranslationResult(result, source) {
+    if (result && typeof result === "object" && !Array.isArray(result)) {
+      const translation = String(result.translation || result.result || result.text || "").trim();
+      return {
+        translation,
+        alignments: normalizeAlignmentItems(result.alignments, source, translation)
+      };
     }
-    let alignIndex = 0;
-    tokens.forEach((token) => {
-      const span = document.createElement("span");
-      const isToken = Boolean(token.trim());
-      span.className = isToken ? "lit-token" : "lit-space";
-      if (isToken) {
-        span.dataset.alignIndex = String(alignIndex);
-        alignIndex += 1;
+    return {
+      translation: String(result || "").trim(),
+      alignments: []
+    };
+  }
+
+  function getTranslationText(result) {
+    return normalizeTranslationResult(result, "").translation;
+  }
+
+  function normalizeAlignmentItems(items, source, translation) {
+    if (!Array.isArray(items)) return [];
+    const sourceText = String(source || "");
+    const targetText = String(translation || "");
+    return items.map((item) => {
+      const sourceStart = clamp(Math.floor(Number(item?.sourceStart)), 0, sourceText.length);
+      const sourceEnd = clamp(Math.floor(Number(item?.sourceEnd)), sourceStart, sourceText.length);
+      const targetStart = clamp(Math.floor(Number(item?.targetStart)), 0, targetText.length);
+      const targetEnd = clamp(Math.floor(Number(item?.targetEnd)), targetStart, targetText.length);
+      if (sourceEnd <= sourceStart || targetEnd <= targetStart) return null;
+      return {
+        sourceStart,
+        sourceEnd,
+        targetStart,
+        targetEnd,
+        sourceText: String(item?.sourceText || sourceText.slice(sourceStart, sourceEnd)),
+        targetText: String(item?.targetText || targetText.slice(targetStart, targetEnd)),
+        confidence: Number(item?.confidence || 0)
+      };
+    }).filter(Boolean);
+  }
+
+  function normalizeAlignmentsForRender(alignments, side, text) {
+    const value = String(text || "");
+    return alignments
+      .map((item, index) => {
+        const start = side === "source" ? item.sourceStart : item.targetStart;
+        const end = side === "source" ? item.sourceEnd : item.targetEnd;
+        return {
+          index: `a-${index}`,
+          start: clamp(Math.floor(Number(start)), 0, value.length),
+          end: clamp(Math.floor(Number(end)), 0, value.length)
+        };
+      })
+      .filter((item) => item.end > item.start)
+      .sort((a, b) => a.start - b.start || a.end - b.end);
+  }
+
+  function renderAlignmentSpans(container, text, side, alignments) {
+    const value = String(text || "");
+    let cursor = 0;
+    for (const item of alignments) {
+      if (item.start < cursor) continue;
+      if (item.start > cursor) {
+        container.appendChild(document.createTextNode(value.slice(cursor, item.start)));
       }
+      const span = document.createElement("span");
+      span.className = "lit-token";
+      span.dataset.alignIndex = item.index;
       span.dataset.alignSide = side;
-      span.textContent = token;
+      span.textContent = value.slice(item.start, item.end);
       container.appendChild(span);
-    });
+      cursor = item.end;
+    }
+    if (cursor < value.length) {
+      container.appendChild(document.createTextNode(value.slice(cursor)));
+    }
   }
 
-  function highlightAlignedToken(index) {
-    panel?.querySelectorAll(".lit-token").forEach((token) => {
-      token.classList.toggle("lit-token-active", token.dataset.alignIndex === index);
-    });
+  function extractReusableTranslation(entry, text) {
+    const parentResult = normalizeTranslationResult(entry.result, entry.source);
+    if (!parentResult.alignments.length) return null;
+    const range = findTextRange(entry.source, text);
+    if (!range) return null;
+    const related = parentResult.alignments.filter((item) =>
+      item.sourceStart >= range.start && item.sourceEnd <= range.end
+    );
+    if (!related.length) return null;
+
+    const targetStart = Math.min(...related.map((item) => item.targetStart));
+    const targetEnd = Math.max(...related.map((item) => item.targetEnd));
+    if (targetEnd <= targetStart) return null;
+    const translation = parentResult.translation.slice(targetStart, targetEnd).trim();
+    if (!translation) return null;
+
+    return {
+      translation,
+      alignments: related.map((item) => ({
+        sourceStart: Math.max(0, item.sourceStart - range.start),
+        sourceEnd: Math.min(String(text || "").length, item.sourceEnd - range.start),
+        targetStart: Math.max(0, item.targetStart - targetStart),
+        targetEnd: Math.min(translation.length, item.targetEnd - targetStart),
+        sourceText: item.sourceText,
+        targetText: item.targetText,
+        confidence: item.confidence
+      })).filter((item) => item.sourceEnd > item.sourceStart && item.targetEnd > item.targetStart)
+    };
   }
 
-  function clearAlignedTokenHighlight() {
-    panel?.querySelectorAll(".lit-token-active").forEach((token) => {
-      token.classList.remove("lit-token-active");
-    });
+  function findTextRange(source, text) {
+    const sourceText = String(source || "");
+    const needle = String(text || "");
+    if (!sourceText || !needle) return null;
+    let start = sourceText.indexOf(needle);
+    if (start < 0) {
+      start = foldText(sourceText).indexOf(foldText(needle));
+    }
+    if (start < 0) return null;
+    return { start, end: start + needle.length };
   }
 
-  function tokenizeForAlignment(text) {
-    return String(text || "").match(/[A-Za-z]+(?:'[A-Za-z]+)?|[\u4e00-\u9fff]|[0-9]+|\s+|[^\s]/g) || [];
+  function isWordSelection(text) {
+    return isEnglishWord(text) || isChineseWordSelection(text);
   }
 
-  function isSingleWord(text) {
+  function isEnglishWord(text) {
     return /^[A-Za-z][A-Za-z'-]*$/.test(normalizeText(text));
+  }
+
+  function isChineseWordSelection(text) {
+    const value = normalizeText(text);
+    return /^[\u3400-\u9fff]{1,6}$/.test(value);
   }
 
   function normalizeWord(word) {
     return normalizeText(word).toLowerCase();
   }
 
+  function normalizeWordQuery(word) {
+    return normalizeText(word).replace(/^[^A-Za-z'-]+|[^A-Za-z'-]+$/g, "");
+  }
+
   function translationCacheKey(mode, text) {
-    return `translation:${mode}:${normalizeText(text)}`;
+    return `translation:${state.translationCacheSalt}:${mode}:${normalizeCacheText(text)}`;
+  }
+
+  function buildTranslationCacheSalt(profile) {
+    if (!profile) return "";
+    return [
+      profile.translationMode || "auto-zh-en",
+      profile.sourceLanguage || "",
+      profile.targetLanguage || ""
+    ].map(normalizeCacheText).join(":");
   }
 
   function escapeHtml(value) {
