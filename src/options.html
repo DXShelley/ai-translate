@@ -90,7 +90,7 @@
                 </select>
               </label>
 
-              <div class="field-actions span-2">
+              <div class="field-actions">
                 <span>模型发现</span>
                 <div class="button-row">
                   <button id="fetchModels" type="button" class="secondary">获取模型列表</button>
@@ -107,42 +107,6 @@
                 <input id="timeoutMs" name="timeoutMs" type="number" min="3000" step="1000">
               </label>
             </div>
-          </section>
-
-          <section class="section">
-            <h2>提示词</h2>
-            <label>
-              <span>Jinja 模板严格模式</span>
-              <select id="jinjaTemplateMode" name="jinjaTemplateMode">
-                <option value="auto">自动检测（推荐）</option>
-                <option value="strict">强制启用（适用于 Qwen3/Llama3 等严格模型）</option>
-                <option value="disabled">强制禁用（适用于 GPT/Claude 等宽松模型）</option>
-              </select>
-              <small style="display:block; margin-top: 0.5em; color: #666;">
-                严格模式会确保对话以用户提示开始，避免某些模型（如 Qwen3、Llama 3.1）的 Jinja 模板校验错误。
-              </small>
-            </label>
-            <label>
-              <span>System 角色提示词</span>
-              <textarea id="systemPrompt" name="systemPrompt" rows="7"></textarea>
-            </label>
-            <label>
-              <span>User 角色提示词模板</span>
-              <textarea id="userPromptTemplate" name="userPromptTemplate" rows="12"></textarea>
-            </label>
-          </section>
-
-          <section class="section">
-            <div class="section-title-row">
-              <h2>模型配置文本</h2>
-              <div class="button-row">
-                <button id="applyProfileText" type="button" class="secondary">应用文本</button>
-              </div>
-            </div>
-            <label>
-              <span>JSON 配置</span>
-              <textarea id="profileText" class="profile-text" rows="10" spellcheck="false"></textarea>
-            </label>
           </section>
 
           <section class="section">
@@ -236,6 +200,31 @@
                 <input id="inputTriggerSpaces" name="inputTriggerSpaces" type="number" min="2" max="6" step="1">
               </label>
             </div>
+          </section>
+
+          <section class="section">
+            <h2>提示词</h2>
+            <label>
+              <span>System 角色提示词</span>
+              <textarea id="systemPrompt" name="systemPrompt" rows="7"></textarea>
+            </label>
+            <label>
+              <span>User 角色提示词模板</span>
+              <textarea id="userPromptTemplate" name="userPromptTemplate" rows="12"></textarea>
+            </label>
+          </section>
+
+          <section class="section">
+            <div class="section-title-row">
+              <h2>模型配置文本</h2>
+              <div class="button-row">
+                <button id="applyProfileText" type="button" class="secondary">应用文本</button>
+              </div>
+            </div>
+            <label>
+              <span>JSON 配置</span>
+              <textarea id="profileText" class="profile-text" rows="10" spellcheck="false"></textarea>
+            </label>
           </section>
 
           <footer class="actions">

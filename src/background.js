@@ -22,11 +22,10 @@ const DEFAULT_PROFILE = {
   timeoutMs: 45000,
   priority: 1,
   enabled: true,
-  jinjaTemplateMode: "auto", // 新增：Jinja模板模式配置
   systemPrompt:
     "You are a precise translation engine. Translate faithfully, keep formatting where useful, preserve names, code, URLs, numbers, and technical terms.",
   userPromptTemplate:
-    "{{instruction}}\nReturn only the translation text.\nDo not explain. Do not add alternatives. Do not output reasoning, analysis, hidden thoughts, or<think> tags.\nKeep line breaks when they carry meaning.\nUse the surrounding context and previous translations to keep terms, names, pronouns, and style consistent.\n\n{{contextBlock}}\n{{previousTranslationsBlock}}\n\nText to translate:\n{{text}}"
+    "{{instruction}}\nReturn only the translation text.\nDo not explain. Do not add alternatives. Do not output reasoning, analysis, hidden thoughts, or <think> tags.\nKeep line breaks when they carry meaning.\nUse the surrounding context and previous translations to keep terms, names, pronouns, and style consistent.\n\n{{contextBlock}}\n{{previousTranslationsBlock}}\n\nText to translate:\n{{text}}"
 };
 
 const DEFAULT_CONFIG = {
@@ -123,7 +122,7 @@ async function getConfig() {
 }
 
 async function translate(payload) {
-  // 如果有测试配置，直接使用该配置
+  // 如果有测试配置，直接使用该配置（无论该模型是否启用）
   if (payload?.testProfile) {
     const text = String(payload?.text || "").trim();
     const mode = payload?.mode || "selection";
@@ -169,7 +168,7 @@ async function translate(payload) {
     };
   }
 
-  // 正常流程，使用配置中的模型
+  // 正常流程，使用配置中的启用模型
   const config = await getConfig();
   const text = String(payload?.text || "").trim();
   const mode = payload?.mode || "selection";
@@ -457,10 +456,7 @@ function normalizeProfile(profile) {
     extraBody: normalizeObject(profile?.extraBody, DEFAULT_PROFILE.extraBody),
     userPromptTemplate: String(profile?.userPromptTemplate || DEFAULT_PROFILE.userPromptTemplate).trim() || DEFAULT_PROFILE.userPromptTemplate,
     priority: clampNumber(Number(profile?.priority || DEFAULT_PROFILE.priority), 1, 999),
-    enabled: typeof profile?.enabled === "boolean" ? profile.enabled : DEFAULT_PROFILE.enabled,
-    jinjaTemplateMode: ["auto", "strict", "disabled"].includes(profile?.jinjaTemplateMode)
-      ? profile.jinjaTemplateMode
-      : DEFAULT_PROFILE.jinjaTemplateMode
+    enabled: typeof profile?.enabled === "boolean" ? profile.enabled : DEFAULT_PROFILE.enabled
   };
 }
 
@@ -498,16 +494,7 @@ async function requestChatCompletion(profile, messages, temperature, meta = {}) 
   const timer = setTimeout(() => controller.abort(), Number(profile.timeoutMs) || 45000);
   const requestBody = buildChatRequestBody(profile, messages, temperature);
   const startedAt = Date.now();
-  let url = joinUrl(profile.baseUrl, profile.endpointPath);
-
-  // 对于某些模型，可能需要调整API端点路径
-  if (profile.model?.includes("translategemma") || profile.model?.includes("translategemma-12b-it")) {
-    // 如果是translategemma模型，检查是否需要使用特定的端点路径
-    if (!url.includes("/generate")) {
-      // 如果不是/generate端点，可能需要调整
-      // 这里可以根据实际API要求进行调整
-    }
-  }
+  const url = joinUrl(profile.baseUrl, profile.endpointPath);
 
   try {
     const response = await fetch(url, {
@@ -583,82 +570,6 @@ async function saveRequestLog(settings, entry) {
 }
 
 function buildChatRequestBody(profile, messages, temperature) {
-  // 对于 translategemma-12b-it 模型，使用其特定的 API 格式
-  if (profile.model?.includes("translategemma") || profile.model?.includes("translategemma-12b-it")) {
-    // 提取system_prompt和input
-    let system_prompt = "";
-    let input = "";
-
-    if (messages.length > 0) {
-      // 如果有system消息，提取system_prompt
-      if (messages[0].role === "system") {
-        system_prompt = messages[0].content;
-        // 剩下的消息合并为input
-        input = messages.slice(1).map(msg => `${msg.role}: ${msg.content}`).join("\n");
-      } else {
-        // 如果没有system消息，使用第一个user消息作为input
-        input = messages[0].content;
-      }
-    }
-
-    return {
-      model: profile.model,
-      system_prompt: system_prompt,
-      input: input,
-    };
-  }
-
-  // 对于 qwen/qwen3-vl-8b 模型，使用其特定的 API 格式
-  if (profile.model?.includes("qwen/qwen3-vl-8b")) {
-    let system_prompt = "";
-    let input = "";
-
-    if (messages.length > 0) {
-      // 如果有system消息，提取system_prompt
-      if (messages[0].role === "system") {
-        system_prompt = messages[0].content;
-        // 剩下的消息合并为input
-        input = messages.slice(1).map(msg => `${msg.role}: ${msg.content}`).join("\n");
-      } else {
-        // 如果没有system消息，使用第一个user消息作为input
-        input = messages[0].content;
-      }
-    }
-
-    return {
-      model: profile.model,
-      system_prompt: system_prompt,
-      input: input,
-    };
-  }
-
-  // 对于其他可能需要特殊格式的模型，根据API类型或模型名称进行判断
-  // 检查是否需要使用非标准的API格式
-  const isNonStandardFormat = profile.apiType && profile.apiType !== "openai-chat";
-
-  if (isNonStandardFormat) {
-    // 根据API类型返回相应的格式
-    // 这里可以添加其他API类型的支持
-    let system_prompt = "";
-    let input = "";
-
-    if (messages.length > 0) {
-      if (messages[0].role === "system") {
-        system_prompt = messages[0].content;
-        input = messages.slice(1).map(msg => `${msg.role}: ${msg.content}`).join("\n");
-      } else {
-        input = messages[0].content;
-      }
-    }
-
-    return {
-      model: profile.model,
-      system_prompt: system_prompt,
-      input: input,
-    };
-  }
-
-  // 其他模型保持默认格式
   const body = {
     model: profile.model,
     temperature,
@@ -686,40 +597,11 @@ function normalizeObject(value, fallback = {}) {
 }
 
 function extractChatContent(body) {
-  // 尝试从不同的响应格式中提取内容
-  const content = body?.choices?.[0]?.message?.content ??
+  return body?.choices?.[0]?.message?.content ??
     body?.choices?.[0]?.text ??
     body?.reply ??
     body?.output_text ??
-    body?.message?.content ??
-    body?.result ?? // 某些API使用result字段
-    body?.data?.choices?.[0]?.message?.content ?? // 某些API使用data.choices格式
-    body?.data?.reply ?? // 某些API使用data.reply格式
-    body?.response ?? // 某些API使用response字段
-    body?.text; // 某些简单API直接返回text字段
-
-  // 如果是字符串，直接返回
-  if (typeof content === "string") {
-    return content.trim();
-  }
-
-  // 如果content是对象，尝试提取其中的文本
-  if (typeof content === "object" && content !== null) {
-    // 尝试从对象中提取可能的文本字段
-    const textFields = ["text", "content", "translation", "output"];
-    for (const field of textFields) {
-      if (content[field] && typeof content[field] === "string") {
-        return content[field].trim();
-      }
-    }
-  }
-
-  // 如果没有找到内容，尝试从整个响应中提取
-  if (typeof body === "string") {
-    return body.trim();
-  }
-
-  return null;
+    body?.message?.content;
 }
 
 function buildHeaders(config) {
@@ -735,65 +617,23 @@ function buildTranslationMessages(profile, text, mode, context, targetLanguage =
     return [{ role: "user", content: buildHyTranslationPrompt(text, targetLanguage, context) }];
   }
 
-  // 根据Jinja模板模式配置决定处理方式
-  let isStrictTemplateMode = false;
-
-  if (profile.jinjaTemplateMode === "strict") {
-    isStrictTemplateMode = true;
-  } else if (profile.jinjaTemplateMode === "auto") {
-    // 自动模式（默认）：根据模型类型判断是否需要严格处理
-    isStrictTemplateMode =
-      // 排除 translategemma 模型，因为它不接受严格模式的消息格式
-      !profile.model?.includes("translategemma") && (
-        // Qwen系列
-        profile.model?.includes("qwen") ||
-        // Llama 3系列
-        profile.model?.includes("llama3") ||
-        profile.model?.includes("llama-3") ||
-        // Mistral新版
-        profile.model?.includes("mistral") && (profile.model?.includes("v0.3") || profile.model?.includes("v0.4") || profile.model?.includes("large")) ||
-        // 国内模型
-        profile.model?.includes("glm") ||
-        profile.model?.includes("yi-") ||
-        profile.model?.includes("doubao") ||
-        // 本地模型和LM Studio
-        profile.presetId === "lmstudio" ||
-        profile.baseUrl?.includes("localhost") ||
-        profile.baseUrl?.includes("127.0.0.1") ||
-        profile.model?.includes("local") ||
-        profile.model?.includes("lmstudio") ||
-        // 其他可能的严格校验模型
-      profile.presetId === "zhipu" || // 智谱
-      profile.presetId === "volcengine" || // 火山方舟
-      profile.presetId === "baidu" || // 百度千帆
-      profile.presetId === "minimax"; // MiniMax
-  }
-
-  if (isStrictTemplateMode) {
-    // 严格模式：确保消息格式符合Jinja模板要求
+  // 检查是否是本地模型（LM Studio），如果是，只发送用户提示，避免系统提示导致的模板错误
+  const isLocalModel = profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1");
+  if (isLocalModel) {
     const userPrompt = buildUserPrompt(profile, text, mode, targetLanguage, context);
-    const systemPrompt = normalizeTranslationSystemPrompt(profile.systemPrompt);
-
-    // 确保我们生成的提示格式完全符合要求：
-    // 1. 只能有一个user消息
-    // 2. 不能有system或assistant消息
-    // 3. 所有内容必须合并到一个user消息中
-    const combinedPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
-
-    return [{
-      role: "user",
-      content: combinedPrompt
-    }];
-  } else {
-    // 宽松模式：使用传统的系统提示 + 用户提示的格式
-    return [
-      {
-        role: "system",
-        content: normalizeTranslationSystemPrompt(profile.systemPrompt)
-      },
-      { role: "user", content: buildUserPrompt(profile, text, mode, targetLanguage, context) }
-    ];
+    // 将系统提示内容合并到用户提示中，以确保模型能够理解任务要求
+    const combinedPrompt = `${normalizeTranslationSystemPrompt(profile.systemPrompt)}\n\n${userPrompt}`;
+    return [{ role: "user", content: combinedPrompt }];
   }
+
+  // 对于其他模型，保持原有的系统提示 + 用户提示的格式
+  return [
+    {
+      role: "system",
+      content: normalizeTranslationSystemPrompt(profile.systemPrompt)
+    },
+    { role: "user", content: buildUserPrompt(profile, text, mode, targetLanguage, context) }
+  ];
 }
 
 function resolveTargetLanguage(text, profile) {

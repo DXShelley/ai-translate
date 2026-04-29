@@ -20,7 +20,6 @@ const DEFAULT_PROFILE = {
   timeoutMs: 45000,
   priority: 1,
   enabled: true, // 新增：启用状态
-  jinjaTemplateMode: "auto", // 新增：Jinja模板模式配置
   systemPrompt:
     "You are a precise translation engine. Translate faithfully, keep formatting where useful, preserve names, code, URLs, numbers, and technical terms.",
   userPromptTemplate:
@@ -57,7 +56,6 @@ const PROFILE_TEXT_FIELD_ORDER = [
   "temperature",
   "timeoutMs",
   "priority",
-  "jinjaTemplateMode",
   "systemPrompt",
   "userPromptTemplate"
 ];
@@ -283,105 +281,168 @@ initPageMode();
 initPresets();
 load();
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  persistCurrentForm();
-  if (await save()) {
-    setStatus("配置已保存");
-  }
-});
-
-form.addEventListener("input", (event) => {
-  trackProfileEditSource(event.target);
-});
-
-form.addEventListener("change", (event) => {
-  trackProfileEditSource(event.target);
-});
-
-document.querySelector("#test").addEventListener("click", async () => {
-  // 保存当前表单数据，但不立即保存到存储
-  persistCurrentForm();
-  const currentProfile = getSelectedProfile();
-  setStatus(`正在测试模型：${currentProfile.name}...`);
-
-  try {
-    // 确保发送最新的配置到后台
-    const testProfile = { ...currentProfile };
-    // 确保所有必要的字段都有值
-    testProfile.baseUrl = testProfile.baseUrl || DEFAULT_PROFILE.baseUrl;
-    testProfile.endpointPath = testProfile.endpointPath || DEFAULT_PROFILE.endpointPath;
-    testProfile.model = testProfile.model || DEFAULT_PROFILE.model;
-
-    const response = await sendRuntimeMessage({
-      type: "LIT_TRANSLATE",
-      payload: {
-        mode: "sentence",
-        text: "Immersive translation keeps the original context visible.",
-        testProfile: testProfile // 发送当前配置进行测试
-      }
-    });
-
-    if (!response?.ok) {
-      throw new Error(response?.error || "测试失败");
-    }
-
-    setStatus(`测试成功：${response.result.translation}`);
-    // 测试成功后自动保存配置
-    await save();
-  } catch (error) {
-    setStatus(error?.message || String(error), true);
-    console.error("测试模型失败：", error);
-  }
-});
-
-document.querySelector("#fetchModels").addEventListener("click", async () => {
-  persistCurrentForm();
-  setStatus("正在获取模型列表...");
-
-  try {
-    const response = await sendRuntimeMessage({
-      type: "LIT_LIST_MODELS",
-      payload: getProfileFromForm()
-    });
-
-    if (!response?.ok) {
-      throw new Error(response?.error || "模型列表获取失败");
-    }
-
-    fetchedModels = response.result.models;
-    renderAvailableModels(fetchedModels);
-    setStatus(`已获取 ${response.result.models.length} 个模型，请从已部署模型中选择`);
-  } catch (error) {
-    setStatus(error?.message || String(error), true);
-  }
-});
-
-document.querySelector("#refreshLogs").addEventListener("click", () => {
-  // 隐藏日志详情
-  const requestLogDetail = document.getElementById("requestLogDetail");
-  if (requestLogDetail && !requestLogDetail.hidden) {
-    requestLogDetail.hidden = true;
-    selectedRequestLogId = "";
-  }
-  // 刷新日志列表
-  renderRequestLogs();
-});
-
-document.querySelector("#exportLogs").addEventListener("click", async () => {
-  await exportRequestLogs();
-});
-
-document.querySelector("#clearLogs").addEventListener("click", async () => {
-  await clearRequestLogs();
-});
-
-requestLogList.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-copy-log]");
-  if (button) {
+if (form) {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    event.stopPropagation();
+    persistCurrentForm();
+    if (await save()) {
+      setStatus("配置已保存");
+    }
+  });
 
+  form.addEventListener("input", (event) => {
+    trackProfileEditSource(event.target);
+  });
+
+  form.addEventListener("change", (event) => {
+    trackProfileEditSource(event.target);
+  });
+}
+
+const testButton = document.querySelector("#test");
+if (testButton) {
+  testButton.addEventListener("click", async () => {
+    // 保存当前表单数据，但不立即保存到存储
+    persistCurrentForm();
+    // 直接从表单获取值，不依赖 profiles 数组
+    const testProfile = {
+      id: getSelectedProfile().id,
+      name: getSelectedProfile().name, // 使用当前选中配置的名称
+      apiType: "openai-chat",
+      presetId: getSelectedProfile().presetId,
+      baseUrl: form.elements.baseUrl.value.trim() || DEFAULT_PROFILE.baseUrl,
+      endpointPath: form.elements.endpointPath.value.trim() || DEFAULT_PROFILE.endpointPath,
+      apiKey: form.elements.apiKey.value.trim(),
+      model: availableModelsSelect.value || getSelectedProfile().model || DEFAULT_PROFILE.model,
+      authType: form.elements.authType.value || DEFAULT_PROFILE.authType,
+      translationMode: form.elements.translationMode.value || DEFAULT_PROFILE.translationMode,
+      sourceLanguage: form.elements.sourceLanguage.value.trim() || DEFAULT_PROFILE.sourceLanguage,
+      targetLanguage: form.elements.targetLanguage.value.trim() || DEFAULT_PROFILE.targetLanguage,
+      temperature: Number(form.elements.temperature.value || DEFAULT_PROFILE.temperature),
+      timeoutMs: Number(form.elements.timeoutMs.value || DEFAULT_PROFILE.timeoutMs),
+      priority: clampPriority(getRadioValue("priority") || DEFAULT_PROFILE.priority),
+      systemPrompt: form.elements.systemPrompt.value.trim() || DEFAULT_PROFILE.systemPrompt,
+      userPromptTemplate: form.elements.userPromptTemplate.value.trim() || DEFAULT_PROFILE.userPromptTemplate,
+      enabled: getSelectedProfile().enabled // 保留原配置的启用状态
+    };
+
+    setStatus(`正在测试模型：${testProfile.name}...`);
+
+    try {
+      const response = await sendRuntimeMessage({
+        type: "LIT_TRANSLATE",
+        payload: {
+          mode: "sentence",
+          text: "Immersive translation keeps the original context visible.",
+          testProfile: normalizeProfile(testProfile) // 发送当前表单的最新配置进行测试，与启用状态无关
+        }
+      }).catch(error => {
+        console.error("发送消息失败:", error);
+        throw error;
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || "测试失败");
+      }
+
+      setStatus(`测试成功：${response.result.translation}`);
+      // 测试成功后自动保存配置
+      await save();
+    } catch (error) {
+      setStatus(error?.message || String(error), true);
+      console.error("测试模型失败：", error);
+    }
+  });
+}
+
+const fetchModelsButton = document.querySelector("#fetchModels");
+if (fetchModelsButton) {
+  fetchModelsButton.addEventListener("click", async () => {
+    persistCurrentForm();
+    setStatus("正在获取模型列表...");
+
+    try {
+      const response = await sendRuntimeMessage({
+        type: "LIT_LIST_MODELS",
+        payload: getProfileFromForm()
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || "模型列表获取失败");
+      }
+
+      fetchedModels = response.result.models;
+      renderAvailableModels(fetchedModels);
+      setStatus(`已获取 ${response.result.models.length} 个模型，请从已部署模型中选择`);
+    } catch (error) {
+      setStatus(error?.message || String(error), true);
+    }
+  });
+}
+
+const refreshLogsButton = document.querySelector("#refreshLogs");
+if (refreshLogsButton) {
+  refreshLogsButton.addEventListener("click", () => {
+    // 隐藏日志详情
+    const requestLogDetail = document.getElementById("requestLogDetail");
+    if (requestLogDetail && !requestLogDetail.hidden) {
+      requestLogDetail.hidden = true;
+      selectedRequestLogId = "";
+    }
+    // 刷新日志列表
+    renderRequestLogs();
+  });
+}
+
+const exportLogsButton = document.querySelector("#exportLogs");
+if (exportLogsButton) {
+  exportLogsButton.addEventListener("click", async () => {
+    await exportRequestLogs();
+  });
+}
+
+const clearLogsButton = document.querySelector("#clearLogs");
+if (clearLogsButton) {
+  clearLogsButton.addEventListener("click", async () => {
+    await clearRequestLogs();
+  });
+}
+
+if (requestLogList) {
+  requestLogList.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-copy-log]");
+    if (button) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const text = button.closest(".log-field")?.querySelector("pre")?.textContent || "";
+      if (!text) {
+        setStatus("没有可复制的日志内容", true);
+        return;
+      }
+
+      try {
+        await copyText(text);
+        setStatus(`已复制${button.dataset.copyLog}`);
+      } catch (error) {
+        setStatus(error?.message || "复制失败", true);
+      }
+      return;
+    }
+
+    const item = event.target.closest("[data-request-log-id]");
+    if (!item) return;
+    selectedRequestLogId = item.dataset.requestLogId;
+    await renderRequestLogs();
+  });
+}
+
+if (requestLogDetail) {
+  requestLogDetail.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-copy-log]");
+    if (!button) return;
+
+    event.preventDefault();
     const text = button.closest(".log-field")?.querySelector("pre")?.textContent || "";
     if (!text) {
       setStatus("没有可复制的日志内容", true);
@@ -394,171 +455,176 @@ requestLogList.addEventListener("click", async (event) => {
     } catch (error) {
       setStatus(error?.message || "复制失败", true);
     }
-    return;
-  }
+  });
+}
 
-  const item = event.target.closest("[data-request-log-id]");
-  if (!item) return;
-  selectedRequestLogId = item.dataset.requestLogId;
-  await renderRequestLogs();
-});
+const applyProfileTextButton = document.querySelector("#applyProfileText");
+if (applyProfileTextButton) {
+  applyProfileTextButton.addEventListener("click", () => {
+    applyProfileTextToForm();
+  });
+}
 
-requestLogDetail.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-copy-log]");
-  if (!button) return;
+if (profileText) {
+  profileText.addEventListener("blur", () => {
+    applyProfileTextToForm(false);
+  });
+}
 
-  event.preventDefault();
-  const text = button.closest(".log-field")?.querySelector("pre")?.textContent || "";
-  if (!text) {
-    setStatus("没有可复制的日志内容", true);
-    return;
-  }
+const exportConfigButton = document.querySelector("#exportConfig");
+if (exportConfigButton) {
+  exportConfigButton.addEventListener("click", () => {
+    persistCurrentForm();
+    exportConfig();
+  });
+}
 
-  try {
-    await copyText(text);
-    setStatus(`已复制${button.dataset.copyLog}`);
-  } catch (error) {
-    setStatus(error?.message || "复制失败", true);
-  }
-});
-
-document.querySelector("#applyProfileText").addEventListener("click", () => {
-  applyProfileTextToForm();
-});
-
-profileText.addEventListener("blur", () => {
-  applyProfileTextToForm(false);
-});
-
-document.querySelector("#exportConfig").addEventListener("click", () => {
-  persistCurrentForm();
-  exportConfig();
-});
-
-document.querySelector("#importConfig").addEventListener("click", () => {
-  if (!extensionApiAvailable) {
-    setStatus("当前页面没有扩展权限，无法导入配置。请从插件图标或扩展详情页打开配置。", true);
-    return;
-  }
-  importConfigFile.value = "";
-  importConfigFile.click();
-});
-
-importConfigFile.addEventListener("change", async () => {
-  const file = importConfigFile.files?.[0];
-  if (!file) return;
-  await importConfig(file);
-});
-
-document.querySelector("#addProfile").addEventListener("click", () => {
-  persistCurrentForm();
-  const model = DEFAULT_PROFILE.model;
-  const profile = {
-    ...DEFAULT_PROFILE,
-    id: crypto.randomUUID(),
-    model,
-    name: uniqueProfileName(model),
-    enabled: true // 默认启用
-  };
-  profiles.push(profile);
-  selectedProfileId = profile.id;
-  render();
-  setStatus(`已新增配置，保存后生效。${getSpeechCapabilityMessage()}`);
-});
-
-document.querySelector("#duplicateProfile").addEventListener("click", () => {
-  persistCurrentForm();
-  const current = getSelectedProfile();
-  const profile = {
-    ...current,
-    id: crypto.randomUUID(),
-    name: uniqueProfileName(current.name),
-    enabled: true // 默认启用
-  };
-  profiles.push(profile);
-  selectedProfileId = profile.id;
-  render();
-  setStatus("已复制当前配置，保存后生效");
-});
-
-document.querySelector("#deleteProfile").addEventListener("click", () => {
-  if (profiles.length <= 1) {
-    setStatus("至少保留一个模型配置", true);
-    return;
-  }
-
-  const index = profiles.findIndex((profile) => profile.id === selectedProfileId);
-  profiles = profiles.filter((profile) => profile.id !== selectedProfileId);
-  selectedProfileId = profiles[Math.max(0, index - 1)]?.id || profiles[0].id;
-  if (activeProfileId && !profiles.some((profile) => profile.id === activeProfileId)) {
-    activeProfileId = selectedProfileId;
-  }
-  render();
-  setStatus("已删除配置，保存后生效");
-});
-
-profileList.addEventListener("click", (event) => {
-  console.log('Profile list click event', event.target);
-
-  // 如果点击的是复选框或其标签，不执行选择逻辑
-  if (event.target.closest(".profile-enable-checkbox")) {
-    console.log('Checkbox clicked, ignoring');
-    return;
-  }
-
-  const item = event.target.closest("[data-profile-id]");
-  if (!item) {
-    console.log('No profile item clicked');
-    return;
-  }
-
-  console.log('Selecting profile:', item.dataset.profileId);
-  persistCurrentForm();
-  selectedProfileId = item.dataset.profileId;
-  console.log('After select, selectedProfileId:', selectedProfileId);
-  render();
-});
-
-presetSelect.addEventListener("change", () => {
-  const preset = PRESETS.find((item) => item.id === presetSelect.value);
-  const profile = getSelectedProfile();
-  if (!preset) {
-    if (profile) profile.presetId = "";
-    renderProfileList();
-    setStatus("已切换为完全自定义配置，保存后生效");
-    return;
-  }
-
-  for (const [key, value] of Object.entries(preset.values)) {
-    if (key === "model") {
-      resetAvailableModels(value);
-    } else if (form.elements[key]) {
-      form.elements[key].value = value;
+const importConfigButton = document.querySelector("#importConfig");
+if (importConfigButton) {
+  importConfigButton.addEventListener("click", () => {
+    if (!extensionApiAvailable) {
+      setStatus("当前页面没有扩展权限，无法导入配置。请从插件图标或扩展详情页打开配置。", true);
+      return;
     }
-  }
-  if (profile) {
-    profile.presetId = preset.id;
-  }
-  updateSelectedProfileName(preset.values.model);
-  fetchedModels = [];
-  setStatus("已填充预设参数，请按需调整并保存");
-  appendSpeechStatus();
-});
+    importConfigFile.value = "";
+    importConfigFile.click();
+  });
+}
 
-availableModelsSelect.addEventListener("change", () => {
-  if (!availableModelsSelect.value) return;
-  updateSelectedProfileName(availableModelsSelect.value);
-  persistCurrentForm();
-  renderProfileList();
-});
+if (importConfigFile) {
+  importConfigFile.addEventListener("change", async () => {
+    const file = importConfigFile.files?.[0];
+    if (!file) return;
+    await importConfig(file);
+  });
+}
 
-openOptionsButton.addEventListener("click", () => {
-  if (!extensionApiAvailable) {
-    setStatus("请从浏览器扩展管理页加载本项目后再打开配置页", true);
-    return;
-  }
-  browserApi.runtime.openOptionsPage();
-});
+const addProfileButton = document.querySelector("#addProfile");
+if (addProfileButton) {
+  addProfileButton.addEventListener("click", () => {
+    persistCurrentForm();
+    const model = DEFAULT_PROFILE.model;
+    const profile = {
+      ...DEFAULT_PROFILE,
+      id: crypto.randomUUID(),
+      model,
+      name: uniqueProfileName(model),
+      enabled: true // 默认启用
+    };
+    profiles.push(profile);
+    selectedProfileId = profile.id;
+    render();
+    setStatus(`已新增配置，保存后生效。${getSpeechCapabilityMessage()}`);
+  });
+}
+
+const duplicateProfileButton = document.querySelector("#duplicateProfile");
+if (duplicateProfileButton) {
+  duplicateProfileButton.addEventListener("click", () => {
+    persistCurrentForm();
+    const current = getSelectedProfile();
+    const profile = {
+      ...current,
+      id: crypto.randomUUID(),
+      name: uniqueProfileName(current.name),
+      enabled: true // 默认启用
+    };
+    profiles.push(profile);
+    selectedProfileId = profile.id;
+    render();
+    setStatus("已复制当前配置，保存后生效");
+  });
+}
+
+const deleteProfileButton = document.querySelector("#deleteProfile");
+if (deleteProfileButton) {
+  deleteProfileButton.addEventListener("click", () => {
+    if (profiles.length <= 1) {
+      setStatus("至少保留一个模型配置", true);
+      return;
+    }
+
+    const index = profiles.findIndex((profile) => profile.id === selectedProfileId);
+    profiles = profiles.filter((profile) => profile.id !== selectedProfileId);
+    selectedProfileId = profiles[Math.max(0, index - 1)]?.id || profiles[0].id;
+    if (activeProfileId && !profiles.some((profile) => profile.id === activeProfileId)) {
+      activeProfileId = selectedProfileId;
+    }
+    render();
+    setStatus("已删除配置，保存后生效");
+  });
+}
+
+if (profileList) {
+  profileList.addEventListener("click", (event) => {
+    console.log('Profile list click event', event.target);
+
+    // 如果点击的是复选框或其标签，不执行选择逻辑
+    if (event.target.closest(".profile-enable-checkbox")) {
+      console.log('Checkbox clicked, ignoring');
+      return;
+    }
+
+    const item = event.target.closest("[data-profile-id]");
+    if (!item) {
+      console.log('No profile item clicked');
+      return;
+    }
+
+    console.log('Selecting profile:', item.dataset.profileId);
+    persistCurrentForm();
+    selectedProfileId = item.dataset.profileId;
+    console.log('After select, selectedProfileId:', selectedProfileId);
+    render();
+  });
+}
+
+if (presetSelect) {
+  presetSelect.addEventListener("change", () => {
+    const preset = PRESETS.find((item) => item.id === presetSelect.value);
+    const profile = getSelectedProfile();
+    if (!preset) {
+      if (profile) profile.presetId = "";
+      renderProfileList();
+      setStatus("已切换为完全自定义配置，保存后生效");
+      return;
+    }
+
+    for (const [key, value] of Object.entries(preset.values)) {
+      if (key === "model") {
+        resetAvailableModels(value);
+      } else if (form.elements[key]) {
+        form.elements[key].value = value;
+      }
+    }
+    if (profile) {
+      profile.presetId = preset.id;
+    }
+    updateSelectedProfileName(preset.values.model);
+    fetchedModels = [];
+    setStatus("已填充预设参数，请按需调整并保存");
+    appendSpeechStatus();
+  });
+}
+
+if (availableModelsSelect) {
+  availableModelsSelect.addEventListener("change", () => {
+    if (!availableModelsSelect.value) return;
+    updateSelectedProfileName(availableModelsSelect.value);
+    persistCurrentForm();
+    renderProfileList();
+  });
+}
+
+if (openOptionsButton) {
+  openOptionsButton.addEventListener("click", () => {
+    if (!extensionApiAvailable) {
+      setStatus("请从浏览器扩展管理页加载本项目后再打开配置页", true);
+      return;
+    }
+    browserApi.runtime.openOptionsPage();
+  });
+}
 
 function initPageMode() {
   const params = new URLSearchParams(location.search);
@@ -947,10 +1013,6 @@ function fillForm(profile) {
       field.value = value;
     }
   }
-  // 填充Jinja模板模式字段
-  if (form.elements.jinjaTemplateMode) {
-    form.elements.jinjaTemplateMode.value = profile.jinjaTemplateMode || DEFAULT_PROFILE.jinjaTemplateMode;
-  }
   fillProfileText(profile);
   renderingProfile = false;
 }
@@ -1018,8 +1080,9 @@ function getProfileFromForm() {
 
 function getProfileFormValues() {
   const current = getSelectedProfile();
+  // 直接从下拉框获取模型值
   const model = availableModelsSelect.value || current?.model || DEFAULT_PROFILE.model;
-  return {
+  const result = {
     name: current?.name || uniqueProfileName(model, current?.id),
     apiType: "openai-chat",
     presetId: current?.presetId || inferPresetIdFromProfile(current) || "",
@@ -1035,9 +1098,9 @@ function getProfileFormValues() {
     timeoutMs: Number(form.elements.timeoutMs.value || DEFAULT_PROFILE.timeoutMs),
     priority: clampPriority(getRadioValue("priority") || DEFAULT_PROFILE.priority),
     systemPrompt: form.elements.systemPrompt.value.trim() || DEFAULT_PROFILE.systemPrompt,
-    userPromptTemplate: form.elements.userPromptTemplate.value.trim() || DEFAULT_PROFILE.userPromptTemplate,
-    jinjaTemplateMode: form.elements.jinjaTemplateMode.value || DEFAULT_PROFILE.jinjaTemplateMode
+    userPromptTemplate: form.elements.userPromptTemplate.value.trim() || DEFAULT_PROFILE.userPromptTemplate
   };
+  return result;
 }
 
 function readProfileTextOverride() {
@@ -1186,10 +1249,7 @@ function normalizeProfile(profile) {
     extraBody: normalizeObject(profile?.extraBody, DEFAULT_PROFILE.extraBody),
     userPromptTemplate: String(profile?.userPromptTemplate || DEFAULT_PROFILE.userPromptTemplate).trim() || DEFAULT_PROFILE.userPromptTemplate,
     priority: clampPriority(profile?.priority || DEFAULT_PROFILE.priority),
-    enabled: typeof profile?.enabled === "boolean" ? profile.enabled : DEFAULT_PROFILE.enabled, // 处理启用状态
-    jinjaTemplateMode: ["auto", "strict", "disabled"].includes(profile?.jinjaTemplateMode)
-      ? profile.jinjaTemplateMode
-      : DEFAULT_PROFILE.jinjaTemplateMode // 处理Jinja模板模式
+    enabled: typeof profile?.enabled === "boolean" ? profile.enabled : DEFAULT_PROFILE.enabled // 处理启用状态
   };
 }
 
