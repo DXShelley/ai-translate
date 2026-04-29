@@ -620,7 +620,28 @@ function buildHeaders(config) {
 }
 
 function buildTranslationMessages(profile, text, mode, context, targetLanguage = resolveTargetLanguage(text, profile)) {
-  if (isHyTranslationModel(profile) || isTranslateGemmaModel(profile)) {
+  if (isTranslateGemmaModel(profile)) {
+    // translategemma 模型需要特殊的消息格式，content 是一个包含 source_lang_code、target_lang_code、text 的对象数组
+    const sourceLang = resolveSourceLanguage(profile) || (isMostlyChinese(text) ? "Chinese" : "English");
+    const sourceLangCode = mapLanguageToCode(sourceLang);
+    const targetLangCode = mapLanguageToCode(targetLanguage);
+    return [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            source_lang_code: sourceLangCode,
+            target_lang_code: targetLangCode,
+            text: text,
+            image: null
+          }
+        ]
+      }
+    ];
+  }
+
+  if (isHyTranslationModel(profile)) {
     return [{ role: "user", content: buildHyTranslationPrompt(text, targetLanguage, context) }];
   }
 
@@ -674,6 +695,27 @@ function isHyTranslationModel(profile) {
 
 function isTranslateGemmaModel(profile) {
   return /translategemma/i.test(String(profile?.model || ""));
+}
+
+function mapLanguageToCode(language) {
+  const lang = String(language || "").toLowerCase();
+  const codeMap = {
+    "简体中文": "zh",
+    "繁體中文": "zh-TW",
+    "chinese": "zh",
+    "english": "en",
+    "日本語": "ja",
+    "japanese": "ja",
+    "한국어": "ko",
+    "korean": "ko",
+    "français": "fr",
+    "french": "fr",
+    "deutsch": "de",
+    "german": "de",
+    "español": "es",
+    "spanish": "es"
+  };
+  return codeMap[lang] || "en";
 }
 
 function buildHyTranslationPrompt(text, targetLanguage, context = {}) {
