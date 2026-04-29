@@ -621,24 +621,11 @@ function buildHeaders(config) {
 
 function buildTranslationMessages(profile, text, mode, context, targetLanguage = resolveTargetLanguage(text, profile)) {
   if (isTranslateGemmaModel(profile)) {
-    // translategemma 模型需要特殊的消息格式，content 是一个包含 source_lang_code、target_lang_code、text 的对象数组
+    // translategemma 模型有特殊的 jinja 模板要求，建议用户在 LM Studio 中修改模板
+    // 这里我们尝试使用普通的文本提示，同时在 extraBody 中可以添加 stop 条件等
     const sourceLang = resolveSourceLanguage(profile) || (isMostlyChinese(text) ? "Chinese" : "English");
-    const sourceLangCode = mapLanguageToCode(sourceLang);
-    const targetLangCode = mapLanguageToCode(targetLanguage);
-    return [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            source_lang_code: sourceLangCode,
-            target_lang_code: targetLangCode,
-            text: text,
-            image: null
-          }
-        ]
-      }
-    ];
+    const prompt = buildTranslateGemmaPrompt(text, sourceLang, targetLanguage);
+    return [{ role: "user", content: prompt }];
   }
 
   if (isHyTranslationModel(profile)) {
@@ -695,6 +682,16 @@ function isHyTranslationModel(profile) {
 
 function isTranslateGemmaModel(profile) {
   return /translategemma/i.test(String(profile?.model || ""));
+}
+
+function buildTranslateGemmaPrompt(text, sourceLang, targetLang) {
+  return [
+    `Translate from ${sourceLang} to ${targetLang}.`,
+    "Only return the translation, nothing else.",
+    "",
+    `${sourceLang}: ${text}`,
+    `${targetLang}:`
+  ].join("\n");
 }
 
 function mapLanguageToCode(language) {
