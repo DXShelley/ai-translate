@@ -306,12 +306,19 @@ document.querySelector("#test").addEventListener("click", async () => {
   setStatus(`正在测试模型：${currentProfile.name}...`);
 
   try {
+    // 确保发送最新的配置到后台
+    const testProfile = { ...currentProfile };
+    // 确保所有必要的字段都有值
+    testProfile.baseUrl = testProfile.baseUrl || DEFAULT_PROFILE.baseUrl;
+    testProfile.endpointPath = testProfile.endpointPath || DEFAULT_PROFILE.endpointPath;
+    testProfile.model = testProfile.model || DEFAULT_PROFILE.model;
+
     const response = await sendRuntimeMessage({
       type: "LIT_TRANSLATE",
       payload: {
         mode: "sentence",
         text: "Immersive translation keeps the original context visible.",
-        testProfile: currentProfile // 发送当前配置进行测试
+        testProfile: testProfile // 发送当前配置进行测试
       }
     });
 
@@ -324,6 +331,7 @@ document.querySelector("#test").addEventListener("click", async () => {
     await save();
   } catch (error) {
     setStatus(error?.message || String(error), true);
+    console.error("测试模型失败：", error);
   }
 });
 

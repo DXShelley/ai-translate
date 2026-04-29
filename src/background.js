@@ -498,7 +498,16 @@ async function requestChatCompletion(profile, messages, temperature, meta = {}) 
   const timer = setTimeout(() => controller.abort(), Number(profile.timeoutMs) || 45000);
   const requestBody = buildChatRequestBody(profile, messages, temperature);
   const startedAt = Date.now();
-  const url = joinUrl(profile.baseUrl, profile.endpointPath);
+  let url = joinUrl(profile.baseUrl, profile.endpointPath);
+
+  // 对于某些模型，可能需要调整API端点路径
+  if (profile.model?.includes("translategemma") || profile.model?.includes("translategemma-12b-it")) {
+    // 如果是translategemma模型，检查是否需要使用特定的端点路径
+    if (!url.includes("/generate")) {
+      // 如果不是/generate端点，可能需要调整
+      // 这里可以根据实际API要求进行调整
+    }
+  }
 
   try {
     const response = await fetch(url, {
@@ -574,6 +583,82 @@ async function saveRequestLog(settings, entry) {
 }
 
 function buildChatRequestBody(profile, messages, temperature) {
+  // 对于 translategemma-12b-it 模型，使用其特定的 API 格式
+  if (profile.model?.includes("translategemma") || profile.model?.includes("translategemma-12b-it")) {
+    // 提取system_prompt和input
+    let system_prompt = "";
+    let input = "";
+
+    if (messages.length > 0) {
+      // 如果有system消息，提取system_prompt
+      if (messages[0].role === "system") {
+        system_prompt = messages[0].content;
+        // 剩下的消息合并为input
+        input = messages.slice(1).map(msg => `${msg.role}: ${msg.content}`).join("\n");
+      } else {
+        // 如果没有system消息，使用第一个user消息作为input
+        input = messages[0].content;
+      }
+    }
+
+    return {
+      model: profile.model,
+      system_prompt: system_prompt,
+      input: input,
+    };
+  }
+
+  // 对于 qwen/qwen3-vl-8b 模型，使用其特定的 API 格式
+  if (profile.model?.includes("qwen/qwen3-vl-8b")) {
+    let system_prompt = "";
+    let input = "";
+
+    if (messages.length > 0) {
+      // 如果有system消息，提取system_prompt
+      if (messages[0].role === "system") {
+        system_prompt = messages[0].content;
+        // 剩下的消息合并为input
+        input = messages.slice(1).map(msg => `${msg.role}: ${msg.content}`).join("\n");
+      } else {
+        // 如果没有system消息，使用第一个user消息作为input
+        input = messages[0].content;
+      }
+    }
+
+    return {
+      model: profile.model,
+      system_prompt: system_prompt,
+      input: input,
+    };
+  }
+
+  // 对于其他可能需要特殊格式的模型，根据API类型或模型名称进行判断
+  // 检查是否需要使用非标准的API格式
+  const isNonStandardFormat = profile.apiType && profile.apiType !== "openai-chat";
+
+  if (isNonStandardFormat) {
+    // 根据API类型返回相应的格式
+    // 这里可以添加其他API类型的支持
+    let system_prompt = "";
+    let input = "";
+
+    if (messages.length > 0) {
+      if (messages[0].role === "system") {
+        system_prompt = messages[0].content;
+        input = messages.slice(1).map(msg => `${msg.role}: ${msg.content}`).join("\n");
+      } else {
+        input = messages[0].content;
+      }
+    }
+
+    return {
+      model: profile.model,
+      system_prompt: system_prompt,
+      input: input,
+    };
+  }
+
+  // 其他模型保持默认格式
   const body = {
     model: profile.model,
     temperature,
@@ -601,11 +686,40 @@ function normalizeObject(value, fallback = {}) {
 }
 
 function extractChatContent(body) {
-  return body?.choices?.[0]?.message?.content ??
+  // 尝试从不同的响应格式中提取内容
+  const content = body?.choices?.[0]?.message?.content ??
     body?.choices?.[0]?.text ??
     body?.reply ??
     body?.output_text ??
-    body?.message?.content;
+    body?.message?.content ??
+    body?.result ?? // 某些API使用result字段
+    body?.data?.choices?.[0]?.message?.content ?? // 某些API使用data.choices格式
+    body?.data?.reply ?? // 某些API使用data.reply格式
+    body?.response ?? // 某些API使用response字段
+    body?.text; // 某些简单API直接返回text字段
+
+  // 如果是字符串，直接返回
+  if (typeof content === "string") {
+    return content.trim();
+  }
+
+  // 如果content是对象，尝试提取其中的文本
+  if (typeof content === "object" && content !== null) {
+    // 尝试从对象中提取可能的文本字段
+    const textFields = ["text", "content", "translation", "output"];
+    for (const field of textFields) {
+      if (content[field] && typeof content[field] === "string") {
+        return content[field].trim();
+      }
+    }
+  }
+
+  // 如果没有找到内容，尝试从整个响应中提取
+  if (typeof body === "string") {
+    return body.trim();
+  }
+
+  return null;
 }
 
 function buildHeaders(config) {
