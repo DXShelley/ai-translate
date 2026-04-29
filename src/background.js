@@ -219,14 +219,21 @@ async function getWordInfo(payload) {
   }
 
   return tryProfiles(config, async (profile) => {
-    const messages = [
-      {
-        role: "system",
-        content:
-          "You are a bilingual English dictionary. Return only valid compact JSON. Do not wrap it in markdown."
-      },
-      { role: "user", content: buildWordInfoPrompt(word) }
-    ];
+    const systemPrompt = "You are a bilingual English dictionary. Return only valid compact JSON. Do not wrap it in markdown.";
+    const userPrompt = buildWordInfoPrompt(word);
+    let messages;
+
+    // 对于需要避免 system prompt 的模型，合并为单个 user message
+    if (isHyTranslationModel(profile) || isTranslateGemmaModel(profile) ||
+        profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1") || profile.baseUrl?.includes("macmini")) {
+      messages = [{ role: "user", content: `${systemPrompt}\n\n${userPrompt}` }];
+    } else {
+      messages = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ];
+    }
+
     const body = await requestChatCompletion(profile, messages, 0, { type: "word", settings: config.settings });
 
     const content = extractChatContent(body);
@@ -613,12 +620,12 @@ function buildHeaders(config) {
 }
 
 function buildTranslationMessages(profile, text, mode, context, targetLanguage = resolveTargetLanguage(text, profile)) {
-  if (isHyTranslationModel(profile)) {
+  if (isHyTranslationModel(profile) || isTranslateGemmaModel(profile)) {
     return [{ role: "user", content: buildHyTranslationPrompt(text, targetLanguage, context) }];
   }
 
   // 检查是否是本地模型（LM Studio），如果是，只发送用户提示，避免系统提示导致的模板错误
-  const isLocalModel = profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1");
+  const isLocalModel = profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1") || profile.baseUrl?.includes("macmini");
   if (isLocalModel) {
     const userPrompt = buildUserPrompt(profile, text, mode, targetLanguage, context);
     // 将系统提示内容合并到用户提示中，以确保模型能够理解任务要求
@@ -663,6 +670,10 @@ function normalizeTranslationSystemPrompt(prompt) {
 
 function isHyTranslationModel(profile) {
   return /^hy[-_]?mt/i.test(String(profile?.model || ""));
+}
+
+function isTranslateGemmaModel(profile) {
+  return /translategemma/i.test(String(profile?.model || ""));
 }
 
 function buildHyTranslationPrompt(text, targetLanguage, context = {}) {
