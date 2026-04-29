@@ -100,6 +100,11 @@ browserApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+async function getCurrentSettings() {
+  const saved = await browserApi.storage.sync.get(null);
+  return { ...DEFAULT_CONFIG.settings, ...(saved.settings || {}) };
+}
+
 async function getConfig() {
   const saved = await browserApi.storage.sync.get(null);
   const profiles = Array.isArray(saved.profiles) && saved.profiles.length
@@ -144,7 +149,7 @@ async function translate(payload) {
       payload.testProfile,
       messages,
       Number(payload.testProfile.temperature) || 0,
-      { type: "translate", settings: DEFAULT_CONFIG.settings }
+      { type: "translate", settings: await getCurrentSettings() }
     );
 
     const content = extractChatContent(body);
@@ -624,24 +629,26 @@ function buildTranslationMessages(profile, text, mode, context, targetLanguage =
   } else if (profile.jinjaTemplateMode === "auto") {
     // 自动模式（默认）：根据模型类型判断是否需要严格处理
     isStrictTemplateMode =
-      // Qwen系列
-      profile.model?.includes("qwen") ||
-      // Llama 3系列
-      profile.model?.includes("llama3") ||
-      profile.model?.includes("llama-3") ||
-      // Mistral新版
-      profile.model?.includes("mistral") && (profile.model?.includes("v0.3") || profile.model?.includes("v0.4") || profile.model?.includes("large")) ||
-      // 国内模型
-      profile.model?.includes("glm") ||
-      profile.model?.includes("yi-") ||
-      profile.model?.includes("doubao") ||
-      // 本地模型和LM Studio
-      profile.presetId === "lmstudio" ||
-      profile.baseUrl?.includes("localhost") ||
-      profile.baseUrl?.includes("127.0.0.1") ||
-      profile.model?.includes("local") ||
-      profile.model?.includes("lmstudio") ||
-      // 其他可能的严格校验模型
+      // 排除 translategemma 模型，因为它不接受严格模式的消息格式
+      !profile.model?.includes("translategemma") && (
+        // Qwen系列
+        profile.model?.includes("qwen") ||
+        // Llama 3系列
+        profile.model?.includes("llama3") ||
+        profile.model?.includes("llama-3") ||
+        // Mistral新版
+        profile.model?.includes("mistral") && (profile.model?.includes("v0.3") || profile.model?.includes("v0.4") || profile.model?.includes("large")) ||
+        // 国内模型
+        profile.model?.includes("glm") ||
+        profile.model?.includes("yi-") ||
+        profile.model?.includes("doubao") ||
+        // 本地模型和LM Studio
+        profile.presetId === "lmstudio" ||
+        profile.baseUrl?.includes("localhost") ||
+        profile.baseUrl?.includes("127.0.0.1") ||
+        profile.model?.includes("local") ||
+        profile.model?.includes("lmstudio") ||
+        // 其他可能的严格校验模型
       profile.presetId === "zhipu" || // 智谱
       profile.presetId === "volcengine" || // 火山方舟
       profile.presetId === "baidu" || // 百度千帆
