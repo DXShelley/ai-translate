@@ -33,7 +33,7 @@ if ($ExtensionId) {
 } else {
   $extensionTargets = @($targets | Where-Object {
     $_.url -like "chrome-extension://*/*" -and
-    ($_.type -eq "service_worker" -or $_.type -eq "background_page" -or $_.title -like "*Local Immersive Translator*")
+    ($_.type -eq "service_worker" -or $_.type -eq "background_page" -or $_.title -like "*AI Translate*")
   })
 }
 

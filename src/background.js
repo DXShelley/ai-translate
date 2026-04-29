@@ -13,12 +13,19 @@ const DEFAULT_PROFILE = {
   translationMode: "auto-zh-en",
   sourceLanguage: "自动检测",
   targetLanguage: "简体中文",
-  thinkingMode: false,
+  extraBody: {
+    enable_thinking: false,
+    thinking: false,
+    reasoning: { enabled: false }
+  },
   temperature: 0.2,
   timeoutMs: 45000,
   priority: 1,
+  enabled: true,
   systemPrompt:
-    "You are a precise translation engine. Translate faithfully, keep formatting where useful, preserve names, code, URLs, numbers, and technical terms."
+    "You are a precise translation engine. Translate faithfully, keep formatting where useful, preserve names, code, URLs, numbers, and technical terms.",
+  userPromptTemplate:
+    "{{instruction}}\nReturn only the translation text.\nDo not explain. Do not add alternatives. Do not output reasoning, analysis, hidden thoughts, or <think> tags.\nKeep line breaks when they carry meaning.\nUse the surrounding context and previous translations to keep terms, names, pronouns, and style consistent.\n\n{{contextBlock}}\n{{previousTranslationsBlock}}\n\nText to translate:\n{{text}}"
 };
 
 const DEFAULT_CONFIG = {
@@ -92,6 +99,11 @@ browserApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+async function getCurrentSettings() {
+  const saved = await browserApi.storage.sync.get(null);
+  return { ...DEFAULT_CONFIG.settings, ...(saved.settings || {}) };
+}
+
 async function getConfig() {
   const saved = await browserApi.storage.sync.get(null);
   const profiles = Array.isArray(saved.profiles) && saved.profiles.length
@@ -110,6 +122,53 @@ async function getConfig() {
 }
 
 async function translate(payload) {
+  // 如果有测试配置，直接使用该配置（无论该模型是否启用）
+  if (payload?.testProfile) {
+    const text = String(payload?.text || "").trim();
+    const mode = payload?.mode || "selection";
+    const context = payload?.context || {};
+
+    if (!text) {
+      throw new Error("没有可翻译的文本");
+    }
+
+    const targetLanguage = resolveTargetLanguage(text, payload.testProfile);
+    const requestContext = {
+      ...context,
+      sourceLanguage: resolveSourceLanguage(payload.testProfile)
+    };
+    const messages = buildTranslationMessages(
+      payload.testProfile,
+      text,
+      mode,
+      requestContext,
+      targetLanguage
+    );
+    const body = await requestChatCompletion(
+      payload.testProfile,
+      messages,
+      Number(payload.testProfile.temperature) || 0,
+      { type: "translate", settings: await getCurrentSettings() }
+    );
+
+    const content = extractChatContent(body);
+    if (!content) {
+      throw new Error("接口未返回 choices[0].message.content");
+    }
+
+    const normalized = normalizeTranslationContent(content, text);
+    return {
+      source: text,
+      translation: normalized.translation,
+      alignments: normalized.alignments,
+      mode,
+      targetLanguage,
+      model: payload.testProfile.model,
+      profileName: payload.testProfile.name
+    };
+  }
+
+  // 正常流程，使用配置中的启用模型
   const config = await getConfig();
   const text = String(payload?.text || "").trim();
   const mode = payload?.mode || "selection";
@@ -394,8 +453,10 @@ function normalizeProfile(profile) {
       : DEFAULT_PROFILE.translationMode,
     sourceLanguage: String(profile?.sourceLanguage || DEFAULT_PROFILE.sourceLanguage).trim() || DEFAULT_PROFILE.sourceLanguage,
     targetLanguage: String(profile?.targetLanguage || DEFAULT_PROFILE.targetLanguage).trim() || DEFAULT_PROFILE.targetLanguage,
-    thinkingMode: profile?.thinkingMode === true,
-    priority: clampNumber(Number(profile?.priority || DEFAULT_PROFILE.priority), 1, 999)
+    extraBody: normalizeObject(profile?.extraBody, DEFAULT_PROFILE.extraBody),
+    userPromptTemplate: String(profile?.userPromptTemplate || DEFAULT_PROFILE.userPromptTemplate).trim() || DEFAULT_PROFILE.userPromptTemplate,
+    priority: clampNumber(Number(profile?.priority || DEFAULT_PROFILE.priority), 1, 999),
+    enabled: typeof profile?.enabled === "boolean" ? profile.enabled : DEFAULT_PROFILE.enabled
   };
 }
 
@@ -412,15 +473,20 @@ async function tryProfiles(config, task) {
 }
 
 function getProfilesByPriority(config) {
-  const active = config.activeProfile;
+  // 筛选出启用的模型
+  const enabledProfiles = config.profiles.filter(profile => profile.enabled);
+
+  if (enabledProfiles.length === 0) {
+    return [];
+  }
+
   const order = new Map(config.profiles.map((profile, index) => [profile.id, index]));
-  const rest = config.profiles
-    .filter((profile) => profile.id !== active.id)
-    .sort((a, b) =>
-      Number(a.priority || 999) - Number(b.priority || 999) ||
-      Number(order.get(a.id) ?? 999) - Number(order.get(b.id) ?? 999)
-    );
-  return [active, ...rest];
+
+  // 按优先级排序
+  return enabledProfiles.sort((a, b) =>
+    Number(a.priority || 999) - Number(b.priority || 999) ||
+    Number(order.get(a.id) ?? 999) - Number(order.get(b.id) ?? 999)
+  );
 }
 
 async function requestChatCompletion(profile, messages, temperature, meta = {}) {
@@ -509,40 +575,8 @@ function buildChatRequestBody(profile, messages, temperature) {
     temperature,
     messages
   };
-  Object.assign(body, buildThinkingModeParams(profile));
+  Object.assign(body, normalizeObject(profile.extraBody, {}));
   return body;
-}
-
-function buildThinkingModeParams(profile) {
-  const presetId = profile.presetId || inferProviderFromBaseUrl(profile.baseUrl);
-  const model = String(profile.model || "").toLowerCase();
-  const thinkingEnabled = profile.thinkingMode === true;
-
-  if (presetId === "dashscope" || presetId === "siliconflow") {
-    return { enable_thinking: thinkingEnabled };
-  }
-
-  if (presetId === "vllm" && /qwen|qwq/i.test(model)) {
-    return { chat_template_kwargs: { enable_thinking: thinkingEnabled } };
-  }
-
-  if (presetId === "kimi" || presetId === "zhipu") {
-    return { thinking: { type: thinkingEnabled ? "enabled" : "disabled" } };
-  }
-
-  if (presetId === "openrouter") {
-    return thinkingEnabled ? {} : { reasoning: { effort: "none", exclude: true } };
-  }
-
-  if ((presetId === "openai" || presetId === "codeplan") && /^gpt-5/.test(model)) {
-    return { reasoning_effort: thinkingEnabled ? "low" : "minimal" };
-  }
-
-  if (presetId === "deepseek") {
-    return thinkingEnabled ? { thinking: { type: "enabled" } } : {};
-  }
-
-  return {};
 }
 
 function inferProviderFromBaseUrl(baseUrl) {
@@ -556,6 +590,10 @@ function inferProviderFromBaseUrl(baseUrl) {
   if (value.includes("api.deepseek.com")) return "deepseek";
   if (value.includes("codingplanx.ai")) return "codeplan";
   return "";
+}
+
+function normalizeObject(value, fallback = {}) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : fallback;
 }
 
 function extractChatContent(body) {
@@ -579,12 +617,22 @@ function buildTranslationMessages(profile, text, mode, context, targetLanguage =
     return [{ role: "user", content: buildHyTranslationPrompt(text, targetLanguage, context) }];
   }
 
+  // 检查是否是本地模型（LM Studio），如果是，只发送用户提示，避免系统提示导致的模板错误
+  const isLocalModel = profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1");
+  if (isLocalModel) {
+    const userPrompt = buildUserPrompt(profile, text, mode, targetLanguage, context);
+    // 将系统提示内容合并到用户提示中，以确保模型能够理解任务要求
+    const combinedPrompt = `${normalizeTranslationSystemPrompt(profile.systemPrompt)}\n\n${userPrompt}`;
+    return [{ role: "user", content: combinedPrompt }];
+  }
+
+  // 对于其他模型，保持原有的系统提示 + 用户提示的格式
   return [
     {
       role: "system",
       content: normalizeTranslationSystemPrompt(profile.systemPrompt)
     },
-    { role: "user", content: buildUserPrompt(text, mode, targetLanguage, context) }
+    { role: "user", content: buildUserPrompt(profile, text, mode, targetLanguage, context) }
   ];
 }
 
@@ -640,7 +688,7 @@ function buildHyTranslationPrompt(text, targetLanguage, context = {}) {
   return lines.join("\n");
 }
 
-function buildUserPrompt(text, mode, targetLanguage, context = {}) {
+function buildUserPrompt(profile, text, mode, targetLanguage, context = {}) {
   const labels = {
     selection: "selected text",
     sentence: "sentence",
@@ -655,22 +703,22 @@ function buildUserPrompt(text, mode, targetLanguage, context = {}) {
       .join("\n")
     : "";
 
-  return [
-    buildTranslateInstruction(labels[mode] || "text", targetLanguage, context.sourceLanguage),
-    "Return only the translation text.",
-    "Do not explain. Do not add alternatives. Do not output reasoning, analysis, hidden thoughts, or <think> tags.",
-    "Keep line breaks when they carry meaning.",
-    "Use the surrounding context and previous translations to keep terms, names, pronouns, and style consistent.",
-    context.scope ? "" : null,
-    context.scope ? "Surrounding context:" : null,
-    context.scope ? context.scope : null,
-    previousTranslations ? "" : null,
-    previousTranslations ? "Previous translations in the same popup:" : null,
-    previousTranslations || null,
-    "",
-    "Text to translate:",
+  const contextBlock = context.scope ? `Surrounding context:\n${context.scope}` : "";
+  const previousTranslationsBlock = previousTranslations
+    ? `Previous translations in the same popup:\n${previousTranslations}`
+    : "";
+
+  return renderPromptTemplate(profile.userPromptTemplate, {
+    instruction: buildTranslateInstruction(labels[mode] || "text", targetLanguage, context.sourceLanguage),
+    modeLabel: labels[mode] || "text",
+    targetLanguage,
+    sourceLanguage: context.sourceLanguage || "",
+    context: context.scope || "",
+    contextBlock,
+    previousTranslations,
+    previousTranslationsBlock,
     text
-  ].filter((line) => line !== null).join("\n");
+  });
 }
 
 function buildTranslateInstruction(label, targetLanguage, sourceLanguage) {
@@ -678,6 +726,14 @@ function buildTranslateInstruction(label, targetLanguage, sourceLanguage) {
     return `Translate the following ${label} from ${sourceLanguage} into ${targetLanguage}.`;
   }
   return `Translate the following ${label} into ${targetLanguage}.`;
+}
+
+function renderPromptTemplate(template, values) {
+  return String(template || DEFAULT_PROFILE.userPromptTemplate)
+    .replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function joinUrl(baseUrl, path) {

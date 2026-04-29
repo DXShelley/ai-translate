@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Local Immersive Translator",
+  "name": "AI Translate",
   "description": "Selection, sentence, and paragraph translation with an OpenAI-compatible local model.",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "permissions": ["storage", "contextMenus", "activeTab"],
   "host_permissions": ["<all_urls>"],
   "background": {
@@ -18,7 +18,7 @@
   ],
   "options_page": "src/options.html",
   "action": {
-    "default_title": "Local Immersive Translator",
+    "default_title": "AI Translate",
     "default_popup": "src/popup.html"
   },
   "commands": {

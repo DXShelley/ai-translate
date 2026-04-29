@@ -1,6 +1,6 @@
 # 开发规范
 
-本文档记录 Local Immersive Translator 的开发约定。后续功能调整应优先遵循本文档，避免破坏现有交互、缓存和模型兼容行为。
+本文档记录 AI Translate 的开发约定。后续功能调整应优先遵循本文档，避免破坏现有交互、缓存和模型兼容行为。
 
 ## 架构边界
 
@@ -68,18 +68,21 @@ MiniMax 使用 OpenAI 兼容协议：
 - API Key：Token Plan API Key
 - Model ID：`MiniMax-M2.7` 或 `MiniMax-M2.7-highspeed`
 
-### 思考模式
+### 模型特殊请求字段
 
-模型配置包含 `thinkingMode`，默认 `false`。后台按已确认的服务商规范下发参数：
+通用表单只维护 OpenAI 兼容接口的通用字段。不同模型的特殊请求字段通过“模型配置文本”里的 `extraBody` 配置，后台会把 `extraBody` 合并到最终 chat request body。
 
-- DashScope / SiliconFlow：`enable_thinking: false/true`
-- vLLM + Qwen/QwQ：`chat_template_kwargs.enable_thinking: false/true`
-- Kimi / GLM：`thinking.type: "disabled" | "enabled"`
-- OpenRouter：关闭时 `reasoning.effort: "none"` 且 `reasoning.exclude: true`
-- OpenAI / CodePlan 的 `gpt-5*`：`reasoning_effort: "minimal" | "low"`
-- DeepSeek：默认 `deepseek-chat` 不开启思考；开启时发送 `thinking.type: "enabled"`
+默认 `extraBody` 尽量关闭思考模式：
 
-未确认官方禁用参数的服务商不强行添加未知字段，因此后台仍会清理 `<think>...</think>` / `<thinking>...</thinking>` 输出作为兜底。
+```json
+{
+  "enable_thinking": false,
+  "thinking": false,
+  "reasoning": { "enabled": false }
+}
+```
+
+各服务商的思考模式字段不完全一致，用户可以在文本配置中按实际模型文档自行修改或删除。后台仍会清理 `<think>...</think>` / `<thinking>...</thinking>` 输出作为兜底。
 
 ## 缓存规则
 
