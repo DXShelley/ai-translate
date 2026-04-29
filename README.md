@@ -1,4 +1,4 @@
-# Local Immersive Translator
+# AI Translate
 
 一个浏览器扩展原型，用于在网页中进行本地或 OpenAI 兼容模型翻译。扩展重点支持划词、句子、段落三种粒度，并在同一弹框内复用上下文和已返回结果，减少重复请求。
 
