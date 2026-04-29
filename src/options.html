@@ -83,16 +83,18 @@
                 <input id="apiKey" name="apiKey" type="password" placeholder="本地模型通常可留空" autocomplete="off">
               </label>
 
-              <div class="form-grid-item">
-                <label>
-                  <span>已部署模型</span>
-                  <div style="display: flex; gap: 8px; align-items: flex-end;">
-                    <select id="availableModels" name="availableModels" style="flex: 1;">
-                      <option value="">先获取模型列表</option>
-                    </select>
-                    <button id="fetchModels" type="button" class="secondary" style="width: auto; white-space: nowrap;">获取模型列表</button>
-                  </div>
-                </label>
+              <label>
+                <span>已部署模型</span>
+                <select id="availableModels" name="availableModels">
+                  <option value="">先获取模型列表</option>
+                </select>
+              </label>
+
+              <div class="field-actions">
+                <span>模型发现</span>
+                <div class="button-row">
+                  <button id="fetchModels" type="button" class="secondary">获取模型列表</button>
+                </div>
               </div>
 
               <label>

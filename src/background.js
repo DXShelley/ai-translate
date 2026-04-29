@@ -118,6 +118,53 @@ async function getConfig() {
 }
 
 async function translate(payload) {
+  // 如果有测试配置，直接使用该配置
+  if (payload?.testProfile) {
+    const text = String(payload?.text || "").trim();
+    const mode = payload?.mode || "selection";
+    const context = payload?.context || {};
+
+    if (!text) {
+      throw new Error("没有可翻译的文本");
+    }
+
+    const targetLanguage = resolveTargetLanguage(text, payload.testProfile);
+    const requestContext = {
+      ...context,
+      sourceLanguage: resolveSourceLanguage(payload.testProfile)
+    };
+    const messages = buildTranslationMessages(
+      payload.testProfile,
+      text,
+      mode,
+      requestContext,
+      targetLanguage
+    );
+    const body = await requestChatCompletion(
+      payload.testProfile,
+      messages,
+      Number(payload.testProfile.temperature) || 0,
+      { type: "translate", settings: DEFAULT_CONFIG.settings }
+    );
+
+    const content = extractChatContent(body);
+    if (!content) {
+      throw new Error("接口未返回 choices[0].message.content");
+    }
+
+    const normalized = normalizeTranslationContent(content, text);
+    return {
+      source: text,
+      translation: normalized.translation,
+      alignments: normalized.alignments,
+      mode,
+      targetLanguage,
+      model: payload.testProfile.model,
+      profileName: payload.testProfile.name
+    };
+  }
+
+  // 正常流程，使用配置中的模型
   const config = await getConfig();
   const text = String(payload?.text || "").trim();
   const mode = payload?.mode || "selection";

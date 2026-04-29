@@ -300,16 +300,18 @@ form.addEventListener("change", (event) => {
 });
 
 document.querySelector("#test").addEventListener("click", async () => {
+  // 保存当前表单数据，但不立即保存到存储
   persistCurrentForm();
-  await save();
-  setStatus("正在测试当前启用模型...");
+  const currentProfile = getSelectedProfile();
+  setStatus(`正在测试模型：${currentProfile.name}...`);
 
   try {
     const response = await sendRuntimeMessage({
       type: "LIT_TRANSLATE",
       payload: {
         mode: "sentence",
-        text: "Immersive translation keeps the original context visible."
+        text: "Immersive translation keeps the original context visible.",
+        testProfile: currentProfile // 发送当前配置进行测试
       }
     });
 
@@ -318,6 +320,8 @@ document.querySelector("#test").addEventListener("click", async () => {
     }
 
     setStatus(`测试成功：${response.result.translation}`);
+    // 测试成功后自动保存配置
+    await save();
   } catch (error) {
     setStatus(error?.message || String(error), true);
   }
