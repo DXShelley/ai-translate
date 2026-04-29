@@ -219,21 +219,7 @@ async function getWordInfo(payload) {
   }
 
   return tryProfiles(config, async (profile) => {
-    const systemPrompt = "You are a bilingual English dictionary. Return only valid compact JSON. Do not wrap it in markdown.";
-    const userPrompt = buildWordInfoPrompt(word);
-    let messages;
-
-    // 对于需要避免 system prompt 的模型，合并为单个 user message
-    if (isHyTranslationModel(profile) || isTranslateGemmaModel(profile) ||
-        profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1") || profile.baseUrl?.includes("macmini")) {
-      messages = [{ role: "user", content: `${systemPrompt}\n\n${userPrompt}` }];
-    } else {
-      messages = [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ];
-    }
-
+    const messages = buildWordInfoMessages(profile, word);
     const body = await requestChatCompletion(profile, messages, 0, { type: "word", settings: config.settings });
 
     const content = extractChatContent(body);
@@ -620,20 +606,12 @@ function buildHeaders(config) {
 }
 
 function buildTranslationMessages(profile, text, mode, context, targetLanguage = resolveTargetLanguage(text, profile)) {
-  if (isTranslateGemmaModel(profile)) {
-    // translategemma 模型有特殊的 jinja 模板要求，建议用户在 LM Studio 中修改模板
-    // 这里我们尝试使用普通的文本提示，同时在 extraBody 中可以添加 stop 条件等
-    const sourceLang = resolveSourceLanguage(profile) || (isMostlyChinese(text) ? "Chinese" : "English");
-    const prompt = buildTranslateGemmaPrompt(text, sourceLang, targetLanguage);
-    return [{ role: "user", content: prompt }];
-  }
-
-  if (isHyTranslationModel(profile)) {
+  if (isHyTranslationModel(profile) || isTranslateGemmaModel(profile)) {
     return [{ role: "user", content: buildHyTranslationPrompt(text, targetLanguage, context) }];
   }
 
   // 检查是否是本地模型（LM Studio），如果是，只发送用户提示，避免系统提示导致的模板错误
-  const isLocalModel = profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1") || profile.baseUrl?.includes("macmini");
+  const isLocalModel = profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1");
   if (isLocalModel) {
     const userPrompt = buildUserPrompt(profile, text, mode, targetLanguage, context);
     // 将系统提示内容合并到用户提示中，以确保模型能够理解任务要求
@@ -684,37 +662,6 @@ function isTranslateGemmaModel(profile) {
   return /translategemma/i.test(String(profile?.model || ""));
 }
 
-function buildTranslateGemmaPrompt(text, sourceLang, targetLang) {
-  return [
-    `Translate from ${sourceLang} to ${targetLang}.`,
-    "Only return the translation, nothing else.",
-    "",
-    `${sourceLang}: ${text}`,
-    `${targetLang}:`
-  ].join("\n");
-}
-
-function mapLanguageToCode(language) {
-  const lang = String(language || "").toLowerCase();
-  const codeMap = {
-    "简体中文": "zh",
-    "繁體中文": "zh-TW",
-    "chinese": "zh",
-    "english": "en",
-    "日本語": "ja",
-    "japanese": "ja",
-    "한국어": "ko",
-    "korean": "ko",
-    "français": "fr",
-    "french": "fr",
-    "deutsch": "de",
-    "german": "de",
-    "español": "es",
-    "spanish": "es"
-  };
-  return codeMap[lang] || "en";
-}
-
 function buildHyTranslationPrompt(text, targetLanguage, context = {}) {
   const lines = [
     context.sourceLanguage && context.sourceLanguage !== "自动检测"
@@ -736,6 +683,25 @@ function buildHyTranslationPrompt(text, targetLanguage, context = {}) {
 
   lines.push("", "待翻译内容：", text);
   return lines.join("\n");
+}
+
+function buildWordInfoMessages(profile, word) {
+  const systemPrompt = "You are a bilingual English dictionary. Return only valid compact JSON. Do not wrap it in markdown.";
+  const userPrompt = buildWordInfoPrompt(word);
+
+  if (isHyTranslationModel(profile) || isTranslateGemmaModel(profile)) {
+    return [{ role: "user", content: `${systemPrompt}\n\n${userPrompt}` }];
+  }
+
+  const isLocalModel = profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1");
+  if (isLocalModel) {
+    return [{ role: "user", content: `${systemPrompt}\n\n${userPrompt}` }];
+  }
+
+  return [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt }
+  ];
 }
 
 function buildUserPrompt(profile, text, mode, targetLanguage, context = {}) {
