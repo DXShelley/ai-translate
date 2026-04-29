@@ -346,6 +346,13 @@ document.querySelector("#fetchModels").addEventListener("click", async () => {
 });
 
 document.querySelector("#refreshLogs").addEventListener("click", () => {
+  // 隐藏日志详情
+  const requestLogDetail = document.getElementById("requestLogDetail");
+  if (requestLogDetail && !requestLogDetail.hidden) {
+    requestLogDetail.hidden = true;
+    selectedRequestLogId = "";
+  }
+  // 刷新日志列表
   renderRequestLogs();
 });
 

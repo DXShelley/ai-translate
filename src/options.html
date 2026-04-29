@@ -83,12 +83,17 @@
                 <input id="apiKey" name="apiKey" type="password" placeholder="本地模型通常可留空" autocomplete="off">
               </label>
 
-              <label>
-                <span>已部署模型</span>
-                <select id="availableModels" name="availableModels">
-                  <option value="">先获取模型列表</option>
-                </select>
-              </label>
+              <div class="form-grid-item">
+                <label>
+                  <span>已部署模型</span>
+                  <div style="display: flex; gap: 8px; align-items: flex-end;">
+                    <select id="availableModels" name="availableModels" style="flex: 1;">
+                      <option value="">先获取模型列表</option>
+                    </select>
+                    <button id="fetchModels" type="button" class="secondary" style="width: auto; white-space: nowrap;">获取模型列表</button>
+                  </div>
+                </label>
+              </div>
 
               <label>
                 <span>温度</span>
@@ -99,13 +104,6 @@
                 <span>超时毫秒</span>
                 <input id="timeoutMs" name="timeoutMs" type="number" min="3000" step="1000">
               </label>
-
-              <div class="field-actions">
-                <span>模型发现</span>
-                <div class="button-row">
-                  <button id="fetchModels" type="button" class="secondary">获取模型列表</button>
-                </div>
-              </div>
             </div>
           </section>
 
@@ -129,6 +127,19 @@
             <label>
               <span>User 角色提示词模板</span>
               <textarea id="userPromptTemplate" name="userPromptTemplate" rows="12"></textarea>
+            </label>
+          </section>
+
+          <section class="section">
+            <div class="section-title-row">
+              <h2>模型配置文本</h2>
+              <div class="button-row">
+                <button id="applyProfileText" type="button" class="secondary">应用文本</button>
+              </div>
+            </div>
+            <label>
+              <span>JSON 配置</span>
+              <textarea id="profileText" class="profile-text" rows="10" spellcheck="false"></textarea>
             </label>
           </section>
 
@@ -162,19 +173,6 @@
                 </select>
               </label>
             </div>
-          </section>
-
-          <section class="section">
-            <div class="section-title-row">
-              <h2>模型配置文本</h2>
-              <div class="button-row">
-                <button id="applyProfileText" type="button" class="secondary">应用文本</button>
-              </div>
-            </div>
-            <label>
-              <span>JSON 配置</span>
-              <textarea id="profileText" class="profile-text" rows="10" spellcheck="false"></textarea>
-            </label>
           </section>
 
           <section class="section">
