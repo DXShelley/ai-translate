@@ -13,12 +13,20 @@ const DEFAULT_PROFILE = {
   translationMode: "auto-zh-en",
   sourceLanguage: "自动检测",
   targetLanguage: "简体中文",
-  thinkingMode: false,
+  extraBody: {
+    enable_thinking: false,
+    thinking: false,
+    reasoning: { enabled: false }
+  },
   temperature: 0.2,
   timeoutMs: 45000,
   priority: 1,
+  enabled: true,
+  jinjaTemplateMode: "auto", // 新增：Jinja模板模式配置
   systemPrompt:
-    "You are a precise translation engine. Translate faithfully, keep formatting where useful, preserve names, code, URLs, numbers, and technical terms."
+    "You are a precise translation engine. Translate faithfully, keep formatting where useful, preserve names, code, URLs, numbers, and technical terms.",
+  userPromptTemplate:
+    "{{instruction}}\nReturn only the translation text.\nDo not explain. Do not add alternatives. Do not output reasoning, analysis, hidden thoughts, or<think> tags.\nKeep line breaks when they carry meaning.\nUse the surrounding context and previous translations to keep terms, names, pronouns, and style consistent.\n\n{{contextBlock}}\n{{previousTranslationsBlock}}\n\nText to translate:\n{{text}}"
 };
 
 const DEFAULT_CONFIG = {
@@ -394,8 +402,13 @@ function normalizeProfile(profile) {
       : DEFAULT_PROFILE.translationMode,
     sourceLanguage: String(profile?.sourceLanguage || DEFAULT_PROFILE.sourceLanguage).trim() || DEFAULT_PROFILE.sourceLanguage,
     targetLanguage: String(profile?.targetLanguage || DEFAULT_PROFILE.targetLanguage).trim() || DEFAULT_PROFILE.targetLanguage,
-    thinkingMode: profile?.thinkingMode === true,
-    priority: clampNumber(Number(profile?.priority || DEFAULT_PROFILE.priority), 1, 999)
+    extraBody: normalizeObject(profile?.extraBody, DEFAULT_PROFILE.extraBody),
+    userPromptTemplate: String(profile?.userPromptTemplate || DEFAULT_PROFILE.userPromptTemplate).trim() || DEFAULT_PROFILE.userPromptTemplate,
+    priority: clampNumber(Number(profile?.priority || DEFAULT_PROFILE.priority), 1, 999),
+    enabled: typeof profile?.enabled === "boolean" ? profile.enabled : DEFAULT_PROFILE.enabled,
+    jinjaTemplateMode: ["auto", "strict", "disabled"].includes(profile?.jinjaTemplateMode)
+      ? profile.jinjaTemplateMode
+      : DEFAULT_PROFILE.jinjaTemplateMode
   };
 }
 
@@ -412,15 +425,20 @@ async function tryProfiles(config, task) {
 }
 
 function getProfilesByPriority(config) {
-  const active = config.activeProfile;
+  // 筛选出启用的模型
+  const enabledProfiles = config.profiles.filter(profile => profile.enabled);
+
+  if (enabledProfiles.length === 0) {
+    return [];
+  }
+
   const order = new Map(config.profiles.map((profile, index) => [profile.id, index]));
-  const rest = config.profiles
-    .filter((profile) => profile.id !== active.id)
-    .sort((a, b) =>
-      Number(a.priority || 999) - Number(b.priority || 999) ||
-      Number(order.get(a.id) ?? 999) - Number(order.get(b.id) ?? 999)
-    );
-  return [active, ...rest];
+
+  // 按优先级排序
+  return enabledProfiles.sort((a, b) =>
+    Number(a.priority || 999) - Number(b.priority || 999) ||
+    Number(order.get(a.id) ?? 999) - Number(order.get(b.id) ?? 999)
+  );
 }
 
 async function requestChatCompletion(profile, messages, temperature, meta = {}) {
@@ -509,40 +527,8 @@ function buildChatRequestBody(profile, messages, temperature) {
     temperature,
     messages
   };
-  Object.assign(body, buildThinkingModeParams(profile));
+  Object.assign(body, normalizeObject(profile.extraBody, {}));
   return body;
-}
-
-function buildThinkingModeParams(profile) {
-  const presetId = profile.presetId || inferProviderFromBaseUrl(profile.baseUrl);
-  const model = String(profile.model || "").toLowerCase();
-  const thinkingEnabled = profile.thinkingMode === true;
-
-  if (presetId === "dashscope" || presetId === "siliconflow") {
-    return { enable_thinking: thinkingEnabled };
-  }
-
-  if (presetId === "vllm" && /qwen|qwq/i.test(model)) {
-    return { chat_template_kwargs: { enable_thinking: thinkingEnabled } };
-  }
-
-  if (presetId === "kimi" || presetId === "zhipu") {
-    return { thinking: { type: thinkingEnabled ? "enabled" : "disabled" } };
-  }
-
-  if (presetId === "openrouter") {
-    return thinkingEnabled ? {} : { reasoning: { effort: "none", exclude: true } };
-  }
-
-  if ((presetId === "openai" || presetId === "codeplan") && /^gpt-5/.test(model)) {
-    return { reasoning_effort: thinkingEnabled ? "low" : "minimal" };
-  }
-
-  if (presetId === "deepseek") {
-    return thinkingEnabled ? { thinking: { type: "enabled" } } : {};
-  }
-
-  return {};
 }
 
 function inferProviderFromBaseUrl(baseUrl) {
@@ -556,6 +542,10 @@ function inferProviderFromBaseUrl(baseUrl) {
   if (value.includes("api.deepseek.com")) return "deepseek";
   if (value.includes("codingplanx.ai")) return "codeplan";
   return "";
+}
+
+function normalizeObject(value, fallback = {}) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : fallback;
 }
 
 function extractChatContent(body) {
@@ -579,13 +569,63 @@ function buildTranslationMessages(profile, text, mode, context, targetLanguage =
     return [{ role: "user", content: buildHyTranslationPrompt(text, targetLanguage, context) }];
   }
 
-  return [
-    {
-      role: "system",
-      content: normalizeTranslationSystemPrompt(profile.systemPrompt)
-    },
-    { role: "user", content: buildUserPrompt(text, mode, targetLanguage, context) }
-  ];
+  // 根据Jinja模板模式配置决定处理方式
+  let isStrictTemplateMode = false;
+
+  if (profile.jinjaTemplateMode === "strict") {
+    isStrictTemplateMode = true;
+  } else if (profile.jinjaTemplateMode === "auto") {
+    // 自动模式（默认）：根据模型类型判断是否需要严格处理
+    isStrictTemplateMode =
+      // Qwen系列
+      profile.model?.includes("qwen") ||
+      // Llama 3系列
+      profile.model?.includes("llama3") ||
+      profile.model?.includes("llama-3") ||
+      // Mistral新版
+      profile.model?.includes("mistral") && (profile.model?.includes("v0.3") || profile.model?.includes("v0.4") || profile.model?.includes("large")) ||
+      // 国内模型
+      profile.model?.includes("glm") ||
+      profile.model?.includes("yi-") ||
+      profile.model?.includes("doubao") ||
+      // 本地模型和LM Studio
+      profile.presetId === "lmstudio" ||
+      profile.baseUrl?.includes("localhost") ||
+      profile.baseUrl?.includes("127.0.0.1") ||
+      profile.model?.includes("local") ||
+      profile.model?.includes("lmstudio") ||
+      // 其他可能的严格校验模型
+      profile.presetId === "zhipu" || // 智谱
+      profile.presetId === "volcengine" || // 火山方舟
+      profile.presetId === "baidu" || // 百度千帆
+      profile.presetId === "minimax"; // MiniMax
+  }
+
+  if (isStrictTemplateMode) {
+    // 严格模式：确保消息格式符合Jinja模板要求
+    const userPrompt = buildUserPrompt(profile, text, mode, targetLanguage, context);
+    const systemPrompt = normalizeTranslationSystemPrompt(profile.systemPrompt);
+
+    // 确保我们生成的提示格式完全符合要求：
+    // 1. 只能有一个user消息
+    // 2. 不能有system或assistant消息
+    // 3. 所有内容必须合并到一个user消息中
+    const combinedPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
+
+    return [{
+      role: "user",
+      content: combinedPrompt
+    }];
+  } else {
+    // 宽松模式：使用传统的系统提示 + 用户提示的格式
+    return [
+      {
+        role: "system",
+        content: normalizeTranslationSystemPrompt(profile.systemPrompt)
+      },
+      { role: "user", content: buildUserPrompt(profile, text, mode, targetLanguage, context) }
+    ];
+  }
 }
 
 function resolveTargetLanguage(text, profile) {
@@ -640,7 +680,7 @@ function buildHyTranslationPrompt(text, targetLanguage, context = {}) {
   return lines.join("\n");
 }
 
-function buildUserPrompt(text, mode, targetLanguage, context = {}) {
+function buildUserPrompt(profile, text, mode, targetLanguage, context = {}) {
   const labels = {
     selection: "selected text",
     sentence: "sentence",
@@ -655,22 +695,22 @@ function buildUserPrompt(text, mode, targetLanguage, context = {}) {
       .join("\n")
     : "";
 
-  return [
-    buildTranslateInstruction(labels[mode] || "text", targetLanguage, context.sourceLanguage),
-    "Return only the translation text.",
-    "Do not explain. Do not add alternatives. Do not output reasoning, analysis, hidden thoughts, or <think> tags.",
-    "Keep line breaks when they carry meaning.",
-    "Use the surrounding context and previous translations to keep terms, names, pronouns, and style consistent.",
-    context.scope ? "" : null,
-    context.scope ? "Surrounding context:" : null,
-    context.scope ? context.scope : null,
-    previousTranslations ? "" : null,
-    previousTranslations ? "Previous translations in the same popup:" : null,
-    previousTranslations || null,
-    "",
-    "Text to translate:",
+  const contextBlock = context.scope ? `Surrounding context:\n${context.scope}` : "";
+  const previousTranslationsBlock = previousTranslations
+    ? `Previous translations in the same popup:\n${previousTranslations}`
+    : "";
+
+  return renderPromptTemplate(profile.userPromptTemplate, {
+    instruction: buildTranslateInstruction(labels[mode] || "text", targetLanguage, context.sourceLanguage),
+    modeLabel: labels[mode] || "text",
+    targetLanguage,
+    sourceLanguage: context.sourceLanguage || "",
+    context: context.scope || "",
+    contextBlock,
+    previousTranslations,
+    previousTranslationsBlock,
     text
-  ].filter((line) => line !== null).join("\n");
+  });
 }
 
 function buildTranslateInstruction(label, targetLanguage, sourceLanguage) {
@@ -678,6 +718,14 @@ function buildTranslateInstruction(label, targetLanguage, sourceLanguage) {
     return `Translate the following ${label} from ${sourceLanguage} into ${targetLanguage}.`;
   }
   return `Translate the following ${label} into ${targetLanguage}.`;
+}
+
+function renderPromptTemplate(template, values) {
+  return String(template || DEFAULT_PROFILE.userPromptTemplate)
+    .replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function joinUrl(baseUrl, path) {

@@ -34,8 +34,9 @@
           </div>
         </aside>
 
-        <div class="profile-editor">
-          <section class="section">
+        <div class="profile-content">
+          <div class="profile-editor">
+            <section class="section">
             <h2>接口预设</h2>
             <div class="form-grid">
               <label>
@@ -89,6 +90,16 @@
                 </select>
               </label>
 
+              <label>
+                <span>温度</span>
+                <input id="temperature" name="temperature" type="number" min="0" max="2" step="0.1">
+              </label>
+
+              <label>
+                <span>超时毫秒</span>
+                <input id="timeoutMs" name="timeoutMs" type="number" min="3000" step="1000">
+              </label>
+
               <div class="field-actions">
                 <span>模型发现</span>
                 <div class="button-row">
@@ -96,6 +107,29 @@
                 </div>
               </div>
             </div>
+          </section>
+
+          <section class="section">
+            <h2>提示词</h2>
+            <label>
+              <span>Jinja 模板严格模式</span>
+              <select id="jinjaTemplateMode" name="jinjaTemplateMode">
+                <option value="auto">自动检测（推荐）</option>
+                <option value="strict">强制启用（适用于 Qwen3/Llama3 等严格模型）</option>
+                <option value="disabled">强制禁用（适用于 GPT/Claude 等宽松模型）</option>
+              </select>
+              <small style="display:block; margin-top: 0.5em; color: #666;">
+                严格模式会确保对话以用户提示开始，避免某些模型（如 Qwen3、Llama 3.1）的 Jinja 模板校验错误。
+              </small>
+            </label>
+            <label>
+              <span>System 角色提示词</span>
+              <textarea id="systemPrompt" name="systemPrompt" rows="7"></textarea>
+            </label>
+            <label>
+              <span>User 角色提示词模板</span>
+              <textarea id="userPromptTemplate" name="userPromptTemplate" rows="12"></textarea>
+            </label>
           </section>
 
           <section class="section">
@@ -127,33 +161,7 @@
                   <option value="Español">Español</option>
                 </select>
               </label>
-
-              <label>
-                <span>思考模式</span>
-                <select id="thinkingMode" name="thinkingMode">
-                  <option value="false">关闭</option>
-                  <option value="true">开启</option>
-                </select>
-              </label>
-
-              <label>
-                <span>温度</span>
-                <input id="temperature" name="temperature" type="number" min="0" max="2" step="0.1">
-              </label>
-
-              <label>
-                <span>超时毫秒</span>
-                <input id="timeoutMs" name="timeoutMs" type="number" min="3000" step="1000">
-              </label>
             </div>
-          </section>
-
-          <section class="section">
-            <h2>提示词</h2>
-            <label>
-              <span>系统提示词</span>
-              <textarea id="systemPrompt" name="systemPrompt" rows="7"></textarea>
-            </label>
           </section>
 
           <section class="section">
@@ -230,18 +238,6 @@
             </div>
           </section>
 
-          <section class="section log-section">
-            <div class="section-title-row">
-              <h2>请求日志</h2>
-              <div class="button-row">
-                <button id="refreshLogs" type="button" class="secondary">刷新</button>
-                <button id="exportLogs" type="button" class="secondary">导出</button>
-                <button id="clearLogs" type="button" class="secondary danger">清空</button>
-              </div>
-            </div>
-            <div id="requestLogList" class="request-log-list"></div>
-          </section>
-
           <footer class="actions">
             <div>
               <button type="submit">保存配置</button>
@@ -250,6 +246,20 @@
             <output id="status"></output>
           </footer>
           </div>
+
+          <aside class="request-log-panel">
+            <div class="request-log-panel-head">
+              <h2>请求日志</h2>
+              <div class="button-row">
+                <button id="refreshLogs" type="button" class="secondary">刷新</button>
+                <button id="exportLogs" type="button" class="secondary">导出</button>
+                <button id="clearLogs" type="button" class="secondary danger">清空</button>
+              </div>
+            </div>
+            <aside id="requestLogDetail" class="request-log-detail-panel" hidden></aside>
+            <div id="requestLogList" class="request-log-list"></div>
+          </aside>
+        </div>
       </form>
     </main>
 
