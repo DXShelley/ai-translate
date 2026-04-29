@@ -611,7 +611,7 @@ function buildTranslationMessages(profile, text, mode, context, targetLanguage =
   }
 
   // 检查是否是本地模型（LM Studio），如果是，只发送用户提示，避免系统提示导致的模板错误
-  const isLocalModel = profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1");
+  const isLocalModel = profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1") || profile.baseUrl?.includes("macmini");
   if (isLocalModel) {
     const userPrompt = buildUserPrompt(profile, text, mode, targetLanguage, context);
     // 将系统提示内容合并到用户提示中，以确保模型能够理解任务要求
@@ -693,7 +693,7 @@ function buildWordInfoMessages(profile, word) {
     return [{ role: "user", content: `${systemPrompt}\n\n${userPrompt}` }];
   }
 
-  const isLocalModel = profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1");
+  const isLocalModel = profile.baseUrl?.includes("localhost") || profile.baseUrl?.includes("127.0.0.1") || profile.baseUrl?.includes("macmini");
   if (isLocalModel) {
     return [{ role: "user", content: `${systemPrompt}\n\n${userPrompt}` }];
   }
