@@ -33,6 +33,10 @@ function bundleWithVendor(scriptPath, vendorFiles, vendorDir) {
   return code;
 }
 
+function stripBackgroundLoaders(code) {
+  return code.replace(/^\s*importScripts\([^;]+;\s*\r?\n?/gm, '');
+}
+
 // Minify JS
 async function minifyJS(code) {
   const result = await terserMinify(code, {
@@ -98,7 +102,7 @@ async function buildBrowser(browser) {
       // MV2: bundle in order
       for (const script of bgConfig.scripts) {
         if (script === 'background.js') {
-          bgCode += `/* Source: background.js */\n${readFile(path.join(srcDir, 'background.js'))}\n`;
+          bgCode += `/* Source: background.js */\n${stripBackgroundLoaders(readFile(path.join(srcDir, 'background.js')))}\n`;
         } else if (script.startsWith('vendor/') || script === 'browser-adapter.js') {
           const vendorFile = script === 'browser-adapter.js' ? 'browser-adapter.js' : script;
           bgCode += `/* Vendor: ${vendorFile} */\n${readFile(path.join(outDir, vendorFile))}\n`;
@@ -114,7 +118,7 @@ async function buildBrowser(browser) {
         }
       }
       bgCode += `/* Browser adapter */\n${readFile(path.join(outDir, 'browser-adapter.js'))}\n`;
-      bgCode += `/* Source: background.js */\n${readFile(path.join(srcDir, 'background.js'))}\n`;
+      bgCode += `/* Source: background.js */\n${stripBackgroundLoaders(readFile(path.join(srcDir, 'background.js')))}\n`;
     }
 
     if (bgCode) {
@@ -185,25 +189,27 @@ async function buildBrowser(browser) {
 
 // Create zip
 function createZip(dir, outputZip) {
-  const { execSync } = require('child_process');
-  // Use Python for reliable zip creation
-  const pythonCmd = `python -c "
-import zipfile, os
+  const { execFileSync } = require('child_process');
+  const tempZip = `${outputZip}.tmp`;
+  const zipScript = `
+import os, sys, zipfile
+source_dir, output_zip, final_zip = sys.argv[1], sys.argv[2], sys.argv[3]
 files = []
-for root, dirs, filenames in os.walk('${dir.replace(/\\/g, '\\\\')}'):
+for root, dirs, filenames in os.walk(source_dir):
     for filename in filenames:
         if filename == 'install.rdf':
             continue
         file_path = os.path.join(root, filename)
-        arcname = os.path.relpath(file_path, '${dir.replace(/\\/g, '\\\\')}')
+        arcname = os.path.relpath(file_path, source_dir)
         files.append((file_path, arcname))
 files.sort(key=lambda x: (0 if x[1] == 'manifest.json' else 1, x[1]))
-with zipfile.ZipFile('${outputZip}', 'w', zipfile.ZIP_DEFLATED) as zf:
+with zipfile.ZipFile(output_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
     for file_path, arcname in files:
         zf.write(file_path, arcname)
-print(f'Created {outputZip}: {os.path.getsize(\"${outputZip}\")} bytes')
-"`;
-  execSync(pythonCmd, { encoding: 'utf8', stdio: 'inherit' });
+os.replace(output_zip, final_zip)
+print(f'Created {final_zip}: {os.path.getsize(final_zip)} bytes')
+`;
+  execFileSync('python', ['-c', zipScript, dir, tempZip, outputZip], { encoding: 'utf8', stdio: 'inherit' });
 }
 
 // Main
@@ -218,4 +224,7 @@ async function main() {
   console.log('\n=== Build Complete ===');
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
