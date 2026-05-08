@@ -58,8 +58,6 @@ browserApi.contextMenus.onClicked.addListener((info, tab) => {
     type: "LIT_TRANSLATE_SELECTION",
     mode: "auto",
     text: info.selectionText || ""
-  }).catch((err) => {
-    console.warn("翻译消息发送失败，内容脚本可能未就绪:", err.message);
   });
 });
 
@@ -68,8 +66,6 @@ browserApi.commands.onCommand.addListener((command, tab) => {
   browserApi.tabs.sendMessage(tab.id, {
     type: "LIT_TRANSLATE_SELECTION",
     mode: "auto"
-  }).catch((err) => {
-    console.warn("翻译消息发送失败，内容脚本可能未就绪:", err.message);
   });
 });
 

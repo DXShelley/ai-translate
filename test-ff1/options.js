@@ -501,7 +501,7 @@ if (importConfigFile) {
 
 const addProfileButton = document.querySelector("#addProfile");
 if (addProfileButton) {
-  addProfileButton.addEventListener("click", async () => {
+  addProfileButton.addEventListener("click", () => {
     persistCurrentForm();
     const model = DEFAULT_PROFILE.model;
     const profile = {
@@ -513,15 +513,14 @@ if (addProfileButton) {
     };
     profiles.push(profile);
     selectedProfileId = profile.id;
-    await saveProfiles();
     render();
-    setStatus("已新增配置");
+    setStatus(`已新增配置，保存后生效。${getSpeechCapabilityMessage()}`);
   });
 }
 
 const duplicateProfileButton = document.querySelector("#duplicateProfile");
 if (duplicateProfileButton) {
-  duplicateProfileButton.addEventListener("click", async () => {
+  duplicateProfileButton.addEventListener("click", () => {
     persistCurrentForm();
     const current = getSelectedProfile();
     const profile = {
@@ -532,17 +531,19 @@ if (duplicateProfileButton) {
     };
     profiles.push(profile);
     selectedProfileId = profile.id;
-    await saveProfiles();
     render();
-    setStatus("已复制当前配置");
+    setStatus("已复制当前配置，保存后生效");
   });
 }
 
 const deleteProfileButton = document.querySelector("#deleteProfile");
 if (deleteProfileButton) {
-  deleteProfileButton.addEventListener("click", async () => {
-    if (profiles.length <= 1) {
-      setStatus("至少保留一个模型配置", true);
+  deleteProfileButton.addEventListener("click", () => {
+    const enabledCount = profiles.filter((p) => p.enabled).length;
+    const isDeletingEnabled = profiles.find((p) => p.id === selectedProfileId)?.enabled;
+
+    if (profiles.length <= 1 || (enabledCount <= 1 && isDeletingEnabled)) {
+      alert("至少需要保留一个启用的模型配置");
       return;
     }
 
@@ -552,26 +553,31 @@ if (deleteProfileButton) {
     if (activeProfileId && !profiles.some((profile) => profile.id === activeProfileId)) {
       activeProfileId = selectedProfileId;
     }
-    await saveProfiles();
     render();
-    setStatus("已删除配置");
+    setStatus("已删除配置，保存后生效");
   });
 }
 
 if (profileList) {
   profileList.addEventListener("click", (event) => {
+    console.log('Profile list click event', event.target);
+
     // 如果点击的是复选框或其标签，不执行选择逻辑
     if (event.target.closest(".profile-enable-checkbox")) {
+      console.log('Checkbox clicked, ignoring');
       return;
     }
 
     const item = event.target.closest("[data-profile-id]");
     if (!item) {
+      console.log('No profile item clicked');
       return;
     }
 
+    console.log('Selecting profile:', item.dataset.profileId);
     persistCurrentForm();
     selectedProfileId = item.dataset.profileId;
+    console.log('After select, selectedProfileId:', selectedProfileId);
     render();
   });
 }
@@ -606,11 +612,74 @@ if (presetSelect) {
 
 if (availableModelsSelect) {
   availableModelsSelect.addEventListener("change", () => {
-    if (!availableModelsSelect.value) return;
-    updateSelectedProfileName(availableModelsSelect.value);
-    persistCurrentForm();
-    renderProfileList();
+    const customModelInput = document.querySelector("#customModelInput");
+    if (availableModelsSelect.value === "__custom__") {
+      // 显示自定义输入框
+      if (customModelInput) {
+        customModelInput.style.display = "inline-block";
+        customModelInput.focus();
+      }
+    } else {
+      // 隐藏自定义输入框
+      if (customModelInput) customModelInput.style.display = "none";
+      if (availableModelsSelect.value) {
+        updateSelectedProfileName(availableModelsSelect.value);
+        persistCurrentForm();
+        renderProfileList();
+      }
+    }
   });
+}
+
+const customModelInput = document.querySelector("#customModelInput");
+if (customModelInput) {
+  customModelInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const modelName = customModelInput.value.trim();
+      if (modelName) {
+        // 确保下拉框中有该选项
+        ensureModelOption(modelName);
+        availableModelsSelect.value = modelName;
+        updateSelectedProfileName(modelName);
+        persistCurrentForm();
+        renderProfileList();
+        customModelInput.style.display = "none";
+        setStatus(`已设置自定义模型: ${modelName}`);
+      }
+    }
+  });
+
+  customModelInput.addEventListener("blur", () => {
+    const modelName = customModelInput.value.trim();
+    if (modelName) {
+      // 确保下拉框中有该选项
+      ensureModelOption(modelName);
+      availableModelsSelect.value = modelName;
+      updateSelectedProfileName(modelName);
+      persistCurrentForm();
+      renderProfileList();
+      customModelInput.style.display = "none";
+    }
+  });
+}
+
+function ensureModelOption(modelName) {
+  if (!modelName) return;
+  // 检查是否已存在该选项
+  const existing = availableModelsSelect.querySelector(`option[value="${CSS.escape(modelName)}"]`);
+  if (existing) return;
+  // 添加新选项
+  const option = document.createElement("option");
+  option.value = modelName;
+  option.textContent = modelName;
+  // 插入到"自定义模型..."选项之前
+  const customOption = availableModelsSelect.querySelector('option[value="__custom__"]');
+  if (customOption) {
+    availableModelsSelect.insertBefore(option, customOption);
+  } else {
+    availableModelsSelect.appendChild(option);
+  }
 }
 
 if (openOptionsButton) {
@@ -894,7 +963,7 @@ async function clearRequestLogs() {
   await browserApi.storage.local.set({ requestLogs: [] });
   selectedRequestLogId = "";
   await renderRequestLogs();
-  setStatus("请求日志已清空");
+  alert("请求日志已清空");
 }
 
 function formatLogTime(value) {
@@ -1043,7 +1112,9 @@ function readSettingsFromForm() {
 }
 
 function persistCurrentForm() {
+  console.log('persistCurrentForm called, selectedProfileId:', selectedProfileId);
   const index = profiles.findIndex((profile) => profile.id === selectedProfileId);
+  console.log('persistCurrentForm index:', index, 'profiles:', profiles);
   if (index === -1) return;
   settings = readSettingsFromForm();
   if (profileEditSource === "form") {
@@ -1055,10 +1126,12 @@ function persistCurrentForm() {
     ...oldProfile,
     ...getProfileFromForm()
   });
+  console.log('Updating profile from:', oldProfile, 'to:', newProfile);
   profiles[index] = newProfile;
 }
 
 function getProfileFromForm() {
+  console.log('getProfileFromForm called');
   const formProfile = getProfileFormValues();
   const textProfile = readProfileTextOverride();
   const current = getSelectedProfile();
@@ -1067,6 +1140,7 @@ function getProfileFromForm() {
     ...formProfile,
     ...textProfile
   });
+  console.log('getProfileFromForm result:', result);
   return result;
 }
 
@@ -1183,21 +1257,41 @@ function renderAvailableModels(models) {
   placeholder.textContent = "选择已部署模型";
   availableModelsSelect.appendChild(placeholder);
 
+  // 添加自定义选项
+  const customOption = document.createElement("option");
+  customOption.value = "__custom__";
+  customOption.textContent = "自定义模型...";
+  availableModelsSelect.appendChild(customOption);
+
   for (const model of models) {
     const option = document.createElement("option");
     option.value = model;
     option.textContent = model;
     availableModelsSelect.appendChild(option);
   }
+
+  // 确保自定义输入框初始隐藏
+  const customModelInput = document.querySelector("#customModelInput");
+  if (customModelInput) customModelInput.style.display = "none";
 }
 
 function resetAvailableModels(currentModel = "") {
   availableModelsSelect.innerHTML = "";
-  const option = document.createElement("option");
-  option.value = currentModel || "";
-  option.textContent = currentModel || "先获取模型列表";
-  option.selected = true;
-  availableModelsSelect.appendChild(option);
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = currentModel ? `当前: ${currentModel}` : "先获取模型列表";
+  placeholder.selected = true;
+  availableModelsSelect.appendChild(placeholder);
+
+  // 添加自定义选项
+  const customOption = document.createElement("option");
+  customOption.value = "__custom__";
+  customOption.textContent = "自定义模型...";
+  availableModelsSelect.appendChild(customOption);
+
+  // 确保自定义输入框初始隐藏
+  const customModelInput = document.querySelector("#customModelInput");
+  if (customModelInput) customModelInput.style.display = "none";
 }
 
 function normalizeProfiles(saved) {
@@ -1293,6 +1387,7 @@ function normalizeEndpointForCompare(value) {
 
 function getSelectedProfile() {
   const found = profiles.find((profile) => profile.id === selectedProfileId) || profiles[0];
+  console.log('getSelectedProfile called, selectedProfileId:', selectedProfileId, 'found:', found);
   return found;
 }
 
