@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "AI Translate",
   "description": "划词、句子和段落翻译，使用 OpenAI 兼容的本地大模型。",
-  "version": "3.0.0",
-  "permissions": ["storage", "contextMenus", "activeTab", "commands"],
+  "version": "4.0.0",
+  "permissions": ["storage", "contextMenus", "activeTab", "commands", "tts"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

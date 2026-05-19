@@ -7,7 +7,11 @@
     hoverModifier: "ctrl",
     inputTranslate: true,
     inputTriggerSpaces: 3,
-    bilingualLayout: "vertical"
+    bilingualLayout: "vertical",
+    popupLanguage: "all",
+    translationMode: "auto-zh-en",
+    sourceLanguage: "自动检测",
+    targetLanguage: "简体中文"
   };
   const state = {
     lastPointer: { x: 0, y: 0 },
@@ -39,15 +43,16 @@
   let panel;
   let dragState = null;
   let suppressNextPopoverClick = false;
+  const browserApi = globalThis.litBrowser;
+  const speechController = createSpeechController();
 
   document.addEventListener("pointerup", handlePointerUp, true);
   document.addEventListener("pointerover", debounce(handlePointerOver, 260), true);
-  document.addEventListener("keydown", handleInputKeydown, true);
+  document.addEventListener("keydown", handleKeydown, true);
   document.addEventListener("selectionchange", debounce(handleSelectionChange, 120), true);
   loadSettings();
   loadRecentResults();
-
-  const browserApi = globalThis.litBrowser;
+  warmSpeechVoices();
 
   browserApi.runtime.onMessage.addListener((message) => {
     if (message?.type !== "LIT_TRANSLATE_SELECTION") return;
@@ -64,6 +69,21 @@
   function handlePointerUp(event) {
     if (isInsideTranslator(event.target)) return;
     state.lastPointer = { x: event.clientX, y: event.clientY };
+    if (!event.ctrlKey) {
+      hidePopover();
+      return;
+    }
+    setTimeout(() => showToolbarForSelection(), 30);
+  }
+
+  function handleKeydown(event) {
+    handleSelectionShortcut(event);
+    handleInputKeydown(event);
+  }
+
+  function handleSelectionShortcut(event) {
+    if (event.key !== "Control" || event.repeat) return;
+    if (isEditable(event.target) || isInsideTranslator(event.target)) return;
     setTimeout(() => showToolbarForSelection(), 30);
   }
 
@@ -84,6 +104,10 @@
     const selection = window.getSelection();
     const selectedText = selection?.toString().trim();
     if (!selectedText || isInsideTranslator(selection.anchorNode)) return;
+    if (!matchesPopupLanguage(selectedText)) {
+      hidePopover();
+      return;
+    }
 
     state.sourceText = selectedText;
     state.sourceNode = selection.anchorNode;
@@ -103,14 +127,19 @@
   }
 
   async function translateFromMessage(message) {
-    ensureUi();
     const selection = window.getSelection();
     const text = message.text || window.getSelection()?.toString().trim();
     if (!text) {
+      ensureUi();
       showPanel("selection", "", "", "没有选中文本");
       return;
     }
+    if (!matchesPopupLanguage(text)) {
+      hidePopover();
+      return;
+    }
 
+    ensureUi();
     state.sourceText = text;
     state.sourceNode = selection?.anchorNode || state.sourceNode;
     state.mode = resolveRequestedMode(message.mode, selection, text);
@@ -249,7 +278,11 @@
     const wordPromise = isEnglish && !wordCached ? fetchWordInfo(text) : Promise.resolve(null);
 
     try {
-      const [response] = await Promise.all([translationPromise, wordPromise]);
+      const [translationSettled] = await Promise.allSettled([translationPromise, wordPromise]);
+      if (translationSettled.status === "rejected") {
+        throw translationSettled.reason;
+      }
+      const response = translationSettled.value;
       const result = normalizeTranslationResult(response.result, text);
 
       state.cache[cacheKey] = {
@@ -269,6 +302,11 @@
       }
       state.cache[cacheKey] = { status: "error", mode, source: text, error: error?.message || String(error) };
       if (!popover.hidden && closeToken === state.closeToken && isActiveTranslation(cacheKey)) {
+        if (isEnglish && hasDoneWordInfo(text)) {
+          state.cache[cacheKey] = { status: "done", mode, source: text, result: { translation: "" } };
+          showPanel(mode, text, "");
+          return;
+        }
         showPanel(mode, text, "", error?.message || String(error));
       }
     }
@@ -339,16 +377,31 @@
     } catch (error) {
       state.cache[cacheKey] = { status: "error", mode, source: text, error: error?.message || String(error) };
       if (!popover.hidden && isActiveTranslation(cacheKey)) {
+        if (mode === "selection" && isEnglishWord(text) && hasDoneWordInfo(text)) {
+          state.cache[cacheKey] = { status: "done", mode, source: text, result: { translation: "" } };
+          showPanel(mode, text, "");
+          return;
+        }
         showPanel(mode, text, "", error?.message || String(error));
       }
     }
+  }
+
+  function hasDoneWordInfo(word) {
+    const normalizedWord = normalizeWord(word);
+    const cacheKey = `word:${normalizedWord}`;
+    return Boolean(
+      state.wordCache[cacheKey]?.status === "done" ||
+      state.cache[cacheKey]?.status === "done" ||
+      findRecentWordInfo(normalizedWord)
+    );
   }
 
   async function loadSettings() {
     try {
       const response = await browserApi.runtime.sendMessage({ type: "LIT_GET_CONFIG" });
       state.settings = { ...DEFAULT_SETTINGS, ...(response?.config?.settings || {}) };
-      const nextSalt = buildTranslationCacheSalt(response?.config?.activeProfile);
+      const nextSalt = buildTranslationCacheSalt(response?.config?.activeProfile, state.settings);
       if (state.translationCacheSalt && state.translationCacheSalt !== nextSalt && state.session) {
         state.session.cache = Object.create(null);
         state.cache = state.session.cache;
@@ -371,6 +424,10 @@
     const element = event.target?.closest?.(BLOCK_SELECTOR);
     const text = findParagraphText(element);
     if (!text || text.length < 12 || text === state.lastHoverText) return;
+    if (!matchesPopupLanguage(text)) {
+      hidePopover();
+      return;
+    }
 
     state.lastHoverText = text;
     state.sourceNode = element;
@@ -550,7 +607,7 @@
     const normalizedResult = error ? { translation: error, alignments: [] } : normalizeTranslationResult(result, source);
     renderPlainText(panel.querySelector(".lit-source"), source);
     const resultNode = panel.querySelector(".lit-result");
-    renderPlainText(resultNode, normalizedResult.translation);
+    renderTranslationResult(resultNode, normalizedResult, Boolean(error));
     resultNode.classList.toggle("lit-error", Boolean(error));
     const wordInfoNode = panel.querySelector(".lit-word-info");
     wordInfoNode.hidden = true;
@@ -707,9 +764,31 @@
     state.closeToken += 1;
     state.activeTranslationKey = "";
     state.activeWordKey = "";
+    state.busy = false;
+    dragState = null;
     popover.hidden = true;
+    clearPopoverContent();
     if (panel) panel.hidden = true;
     hideToolbar();
+  }
+
+  function clearPopoverContent() {
+    const searchInput = toolbar?.querySelector(".lit-word-search-input");
+    if (searchInput) searchInput.value = "";
+
+    const sourceNode = panel?.querySelector(".lit-source");
+    const resultNode = panel?.querySelector(".lit-result");
+    const wordInfoNode = panel?.querySelector(".lit-word-info");
+
+    if (sourceNode) sourceNode.textContent = "";
+    if (resultNode) {
+      resultNode.textContent = "";
+      resultNode.classList.remove("lit-error");
+    }
+    if (wordInfoNode) {
+      wordInfoNode.hidden = true;
+      wordInfoNode.textContent = "";
+    }
   }
 
   function suppressPopoverAutoClose(duration = 600) {
@@ -908,11 +987,12 @@
 
   function formatWordInfo(info) {
     if (info?.raw && typeof info.raw === "string") return escapeHtml(info.raw);
+    const speechUrls = normalizeSpeechUrls(info?.speechUrls);
 
     const sections = [
       `<div class="lit-phonetics">
-        <span>美 ${escapeHtml(info?.phoneticUS || "-")} <button data-speak-word="${escapeHtml(info?.word || "")}" data-lang="en-US" title="美式朗读">美音</button></span>
-        <span>英 ${escapeHtml(info?.phoneticUK || "-")} <button data-speak-word="${escapeHtml(info?.word || "")}" data-lang="en-GB" title="英式朗读">英音</button></span>
+        <span>美 ${escapeHtml(info?.phoneticUS || "-")} ${formatSpeechButton(info?.word || "", "en-US", "word-us", "美音", "美式朗读", speechUrls.us)}</span>
+        <span>英 ${escapeHtml(info?.phoneticUK || "-")} ${formatSpeechButton(info?.word || "", "en-GB", "word-uk", "英音", "英式朗读", speechUrls.uk)}</span>
       </div>`,
       formatPartsOfSpeech(info?.partsOfSpeech),
       formatInflections(info?.inflections),
@@ -926,9 +1006,9 @@
   }
 
   document.addEventListener("click", (event) => {
-    const button = event.target.closest?.("[data-speak-text], [data-speak-word]");
+    const button = event.target.closest?.("[data-speech-text]");
     if (!button || !isInsideTranslator(button)) return;
-    speakWord(button.dataset.speakText || button.dataset.speakWord || state.sourceText, button.dataset.lang || "en-US");
+    speechController.speakFromButton(button);
   }, true);
 
   function formatWordList(label, items) {
@@ -982,30 +1062,338 @@
     const en = item?.en || item?.sentence || "";
     const zh = item?.zh || item?.translation || "";
     return [
-      en ? formatExampleText(en) : "",
+      en ? formatExampleText(en, item?.audioUrl || item?.speechUrl || "") : "",
       zh ? `<div class="lit-example-zh">${escapeHtml(zh)}</div>` : ""
     ].join("");
   }
 
-  function formatExampleText(text) {
+  function formatExampleText(text, audioUrl = "") {
     return `<div class="lit-example-en">
       <span>${escapeHtml(text)}</span>
-      <button data-speak-text="${escapeHtml(text)}" data-lang="en-US" title="朗读示例">朗读</button>
+      ${formatSpeechButton(text, "en-US", "example", "朗读", "朗读示例", normalizeSpeechUrl(audioUrl) || buildYoudaoSentenceAudioUrl(text))}
     </div>`;
   }
 
-  function speakWord(word, lang) {
-    const text = normalizeText(word);
-    if (!text || !("speechSynthesis" in window)) return;
+  function formatSpeechButton(text, lang, role, label, title, audioUrl = "") {
+    const normalizedText = normalizeText(text);
+    if (!normalizedText) return "";
+    return `<button
+      class="lit-speech-button"
+      data-speech-text="${escapeHtml(normalizedText)}"
+      data-speech-lang="${escapeHtml(lang || "en-US")}"
+      data-speech-role="${escapeHtml(role || "word-us")}"
+      ${audioUrl ? `data-speech-url="${escapeHtml(audioUrl)}"` : ""}
+      title="${escapeHtml(title || label || "朗读")}"
+      type="button">${escapeHtml(label || "朗读")}</button>`;
+  }
 
+  function createSpeechController() {
+    let activeButton = null;
+    let activeLabel = "";
+
+    return {
+      async speakFromButton(button) {
+        const text = normalizeText(button?.dataset?.speechText || "");
+        const lang = normalizeSpeechLang(button?.dataset?.speechLang || "en-US");
+        const audioUrl = normalizeSpeechUrl(button?.dataset?.speechUrl || "");
+        if (!text) return;
+
+        setButtonState(button, "朗读中", true);
+        clearSpeechStatus();
+        try {
+          if (audioUrl) {
+            const apiSpeech = await speakWithAudioUrl(audioUrl);
+            if (apiSpeech.ok) return;
+            console.warn("API 音频朗读失败，回退到浏览器朗读:", apiSpeech.error);
+          }
+
+          if (isExtensionTtsPreferred()) {
+            const extensionSpeech = await speakWithExtensionTts(text, lang);
+            if (extensionSpeech.ok) return;
+
+            const webSpeech = await speakWithWebSpeech(text, lang);
+            if (webSpeech.ok) {
+              logSpeechFallback(webSpeech);
+              return;
+            }
+            throw new Error(webSpeech.error || extensionSpeech.error || "当前浏览器无可用朗读能力");
+          }
+
+          const webSpeech = await speakWithWebSpeech(text, lang);
+          if (webSpeech.ok) {
+            logSpeechFallback(webSpeech);
+            return;
+          }
+
+          const extensionSpeech = await speakWithExtensionTts(text, lang);
+          if (extensionSpeech.ok) return;
+
+          throw new Error(extensionSpeech.error || webSpeech.error || "当前浏览器无可用朗读能力");
+        } catch (error) {
+          const message = normalizeSpeechError(error);
+          button.title = message;
+          showSpeechStatus(message);
+          console.warn("朗读失败:", message);
+        } finally {
+          restoreButtonState(button);
+        }
+      }
+    };
+
+    function setButtonState(button, label, busy) {
+      if (!button) return;
+      if (activeButton && activeButton !== button) restoreButtonState(activeButton);
+      activeButton = button;
+      activeLabel = button.textContent;
+      button.textContent = label;
+      button.disabled = Boolean(busy);
+      button.setAttribute("aria-busy", String(Boolean(busy)));
+    }
+
+    function restoreButtonState(button) {
+      if (!button) return;
+      button.textContent = activeButton === button ? activeLabel : button.textContent;
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      if (activeButton === button) {
+        activeButton = null;
+        activeLabel = "";
+      }
+    }
+  }
+
+  function isExtensionTtsPreferred() {
+    return browserApi.vendor === "chrome" || browserApi.vendor === "edge";
+  }
+
+  function logSpeechFallback(result) {
+    if (result?.fallbackReason) {
+      console.info("Web Speech 使用默认语音:", result.fallbackReason);
+    }
+  }
+
+  async function speakWithWebSpeech(text, lang) {
+    if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+      return { ok: false, error: "当前浏览器不支持 Web Speech" };
+    }
+
+    const synth = window.speechSynthesis;
+    const voices = synth.getVoices();
+    const voiceMatch = findSpeechVoice(voices, lang);
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = lang;
-    const voices = window.speechSynthesis.getVoices();
-    utterance.voice = voices.find((voice) => voice.lang === lang) ||
-      voices.find((voice) => voice.lang?.toLowerCase().startsWith(lang.toLowerCase().slice(0, 2))) ||
-      null;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+    utterance.lang = voiceMatch.voice?.lang || lang;
+    utterance.voice = voiceMatch.voice || null;
+    utterance.volume = 1;
+    utterance.rate = 1;
+    utterance.pitch = 1;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      };
+      const timer = setTimeout(() => {
+        synth.cancel();
+        finish({ ok: false, error: "Web Speech 启动超时" });
+      }, 1200);
+
+      utterance.onstart = () => finish({
+        ok: true,
+        engine: "web-speech",
+        fallbackReason: voiceMatch.fallbackReason
+      });
+      utterance.onerror = (event) => finish({
+        ok: false,
+        error: event?.error ? `Web Speech ${event.error}` : "Web Speech 朗读失败"
+      });
+
+      try {
+        synth.cancel();
+        synth.resume?.();
+        synth.speak(utterance);
+      } catch (error) {
+        finish({ ok: false, error: error?.message || String(error) });
+      }
+    });
+  }
+
+  async function speakWithExtensionTts(text, lang) {
+    try {
+      const response = await browserApi.runtime.sendMessage({
+        type: "LIT_SPEAK_TEXT",
+        payload: { text, lang, rate: 1, pitch: 1, volume: 1 }
+      });
+      if (response?.ok) return { ok: true, engine: response.engine || "extension-tts" };
+      return { ok: false, error: response?.error || "扩展朗读失败" };
+    } catch (error) {
+      return { ok: false, error: error?.message || String(error) };
+    }
+  }
+
+  async function speakWithAudioUrl(audioUrl) {
+    const fetched = await fetchSpeechAudioDataUrl(audioUrl);
+    if (fetched.ok) {
+      return playAudioSource(fetched.dataUrl, "api-audio-fetch");
+    }
+
+    const direct = await playAudioSource(audioUrl, "api-audio-direct");
+    if (direct.ok) return direct;
+    return {
+      ok: false,
+      error: fetched.error || direct.error || "API 音频播放失败"
+    };
+  }
+
+  async function fetchSpeechAudioDataUrl(audioUrl) {
+    try {
+      const response = await browserApi.runtime.sendMessage({
+        type: "LIT_FETCH_SPEECH_AUDIO",
+        payload: { url: audioUrl }
+      });
+      if (response?.ok && response.dataUrl) {
+        return {
+          ok: true,
+          dataUrl: response.dataUrl,
+          contentType: response.contentType || ""
+        };
+      }
+      return { ok: false, error: response?.error || "API 音频获取失败" };
+    } catch (error) {
+      return { ok: false, error: error?.message || String(error) };
+    }
+  }
+
+  async function playAudioSource(sourceUrl, engine) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const audio = new Audio(sourceUrl);
+      audio.preload = "auto";
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        audio.onplay = null;
+        audio.onerror = null;
+        resolve(result);
+      };
+      const timer = setTimeout(() => {
+        audio.pause();
+        finish({ ok: false, error: "API 音频启动超时" });
+      }, 2500);
+
+      audio.onplay = () => finish({ ok: true, engine });
+      audio.onerror = () => finish({ ok: false, error: "API 音频播放失败" });
+
+      try {
+        audio.play().catch((error) => {
+          finish({ ok: false, error: error?.message || String(error) });
+        });
+      } catch (error) {
+        finish({ ok: false, error: error?.message || String(error) });
+      }
+    });
+  }
+
+  function findSpeechVoice(voices, lang) {
+    const list = Array.isArray(voices) ? voices : [];
+    const normalizedLang = normalizeSpeechLang(lang).toLowerCase();
+    const family = normalizedLang.slice(0, 2);
+    const exact = list.find((voice) => normalizeSpeechLang(voice.lang).toLowerCase() === normalizedLang);
+    if (exact) return { voice: exact, fallbackReason: "" };
+
+    const brandedFamily = list.find((voice) =>
+      normalizeSpeechLang(voice.lang).toLowerCase().startsWith(`${family}-`) &&
+      /microsoft|google|apple|system/i.test(`${voice.name || ""} ${voice.voiceURI || ""}`)
+    );
+    if (brandedFamily) return { voice: brandedFamily, fallbackReason: `未找到 ${lang}，使用 ${brandedFamily.lang}` };
+
+    const sameFamily = list.find((voice) => normalizeSpeechLang(voice.lang).toLowerCase().startsWith(`${family}-`));
+    if (sameFamily) return { voice: sameFamily, fallbackReason: `未找到 ${lang}，使用 ${sameFamily.lang}` };
+
+    const english = list.find((voice) => /english|en[-_]/i.test(`${voice.name || ""} ${voice.lang || ""}`));
+    if (english) return { voice: english, fallbackReason: `未找到 ${lang}，使用 ${english.lang || "英文语音"}` };
+
+    return { voice: null, fallbackReason: `未找到 ${lang} 语音，使用浏览器默认语音` };
+  }
+
+  function normalizeSpeechLang(lang) {
+    return String(lang || "en-US").trim() || "en-US";
+  }
+
+  function normalizeSpeechUrl(url) {
+    const value = String(url || "").trim();
+    if (!value) return "";
+    if (value.startsWith("//")) return `https:${value}`;
+    if (/^https?:\/\//i.test(value)) return value;
+    return "";
+  }
+
+  function buildYoudaoSentenceAudioUrl(text) {
+    const value = normalizeText(text);
+    if (!value) return "";
+    return `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(value).replace(/%20/g, "+")}&le=eng`;
+  }
+
+  function normalizeSpeechUrls(value) {
+    return {
+      us: normalizeSpeechUrl(value?.us || value?.US || value?.american),
+      uk: normalizeSpeechUrl(value?.uk || value?.UK || value?.british)
+    };
+  }
+
+  function resolveTranslationSpeechLang(text, targetLanguage) {
+    const language = String(targetLanguage || state.settings.targetLanguage || "").trim().toLowerCase();
+    if (/english|英语|英文|en\b/.test(language)) return "en-US";
+    if (/繁體|繁体|traditional|zh-tw|zh-hk/.test(language)) return "zh-TW";
+    if (/中文|简体|chinese|zh|汉语/.test(language)) return "zh-CN";
+    if (/日本|日语|japanese|ja/.test(language)) return "ja-JP";
+    if (/韩|韓|korean|ko/.test(language)) return "ko-KR";
+    if (matchesTextLanguage(text, "en")) return "en-US";
+    if (matchesTextLanguage(text, "zh")) return "zh-CN";
+    if (matchesTextLanguage(text, "ja")) return "ja-JP";
+    if (matchesTextLanguage(text, "ko")) return "ko-KR";
+    return "en-US";
+  }
+
+  function normalizeSpeechError(error) {
+    const message = error?.message || String(error || "");
+    if (/Browser API not available: speak|不支持扩展朗读接口|tts/i.test(message)) {
+      return "当前浏览器无可用扩展朗读接口";
+    }
+    if (/not-allowed|permission|interrupted/i.test(message)) {
+      return "浏览器阻止了本次朗读";
+    }
+    if (/timeout|超时/i.test(message)) {
+      return "朗读启动超时，请重试";
+    }
+    return message || "朗读失败";
+  }
+
+  function showSpeechStatus(message) {
+    const host = panel?.querySelector(".lit-word-info:not([hidden])") || panel;
+    if (!host) return;
+    let node = host.querySelector?.(".lit-speech-status");
+    if (!node) {
+      node = document.createElement("div");
+      node.className = "lit-speech-status";
+      host.appendChild(node);
+    }
+    node.textContent = message;
+  }
+
+  function clearSpeechStatus() {
+    panel?.querySelectorAll(".lit-speech-status").forEach((node) => node.remove());
+  }
+
+  function warmSpeechVoices() {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.getVoices();
+    window.speechSynthesis.addEventListener?.("voiceschanged", () => {
+      window.speechSynthesis.getVoices();
+    }, { once: true });
   }
 
   async function loadRecentResults() {
@@ -1091,6 +1479,7 @@
       synonyms: Array.isArray(info?.synonyms) ? info.synonyms : [],
       antonyms: Array.isArray(info?.antonyms) ? info.antonyms : [],
       examples: Array.isArray(info?.examples) ? info.examples : [],
+      speechUrls: normalizeSpeechUrls(info?.speechUrls),
       raw: info?.raw || null
     };
   }
@@ -1118,17 +1507,40 @@
     container.textContent = text;
   }
 
+  function renderTranslationResult(container, result, isError) {
+    container.textContent = "";
+    const translation = String(result?.translation || "");
+    const textNode = document.createElement("div");
+    textNode.className = "lit-result-text";
+    textNode.textContent = translation;
+    container.appendChild(textNode);
+
+    if (isError || !translation || translation === "翻译中...") return;
+    const actions = document.createElement("div");
+    actions.className = "lit-result-actions";
+    actions.innerHTML = formatSpeechButton(
+      translation,
+      resolveTranslationSpeechLang(translation, result?.targetLanguage),
+      "translation",
+      "朗读译文",
+      "朗读译文"
+    );
+    container.appendChild(actions);
+  }
+
   function normalizeTranslationResult(result, source) {
     if (result && typeof result === "object" && !Array.isArray(result)) {
       const translation = String(result.translation || result.result || result.text || "").trim();
       return {
         translation,
-        alignments: normalizeAlignmentItems(result.alignments, source, translation)
+        alignments: normalizeAlignmentItems(result.alignments, source, translation),
+        targetLanguage: String(result.targetLanguage || "").trim()
       };
     }
     return {
       translation: String(result || "").trim(),
-      alignments: []
+      alignments: [],
+      targetLanguage: ""
     };
   }
 
@@ -1250,6 +1662,38 @@
     return /^[\u3400-\u9fff]{1,6}$/.test(value);
   }
 
+  function matchesPopupLanguage(text) {
+    const expected = normalizeLanguageCode(state.settings.popupLanguage);
+    if (!expected || expected === "all") return true;
+    return matchesTextLanguage(text, expected);
+  }
+
+  function matchesTextLanguage(text, expected) {
+    const value = normalizeText(text);
+    if (!value) return false;
+
+    const hasLatin = /[A-Za-z]/.test(value);
+    const hasHan = /[\u3400-\u9fff]/.test(value);
+    const hasJapaneseKana = /[\u3040-\u30ff]/.test(value);
+    const hasKorean = /[\uac00-\ud7af]/.test(value);
+
+    if (expected === "en") return hasLatin && !hasHan && !hasJapaneseKana && !hasKorean;
+    if (expected === "zh") return hasHan && !hasJapaneseKana && !hasKorean;
+    if (expected === "ja") return hasJapaneseKana;
+    if (expected === "ko") return hasKorean;
+    return false;
+  }
+
+  function normalizeLanguageCode(value) {
+    const code = String(value || "all").trim().toLowerCase();
+    if (["", "all", "auto", "*", "any"].includes(code)) return "all";
+    if (["en", "eng", "english"].includes(code)) return "en";
+    if (["zh", "zh-cn", "zh-tw", "cn", "chinese", "中文", "简体中文", "繁體中文"].includes(code)) return "zh";
+    if (["ja", "jp", "japanese", "日本語"].includes(code)) return "ja";
+    if (["ko", "kr", "korean", "한국어"].includes(code)) return "ko";
+    return code;
+  }
+
   function normalizeWord(word) {
     return normalizeText(word).toLowerCase();
   }
@@ -1262,12 +1706,12 @@
     return `translation:${state.translationCacheSalt}:${mode}:${normalizeCacheText(text)}`;
   }
 
-  function buildTranslationCacheSalt(profile) {
+  function buildTranslationCacheSalt(profile, settings = state.settings) {
     if (!profile) return "";
     return [
-      profile.translationMode || "auto-zh-en",
-      profile.sourceLanguage || "",
-      profile.targetLanguage || ""
+      settings.translationMode || "auto-zh-en",
+      settings.sourceLanguage || "",
+      settings.targetLanguage || ""
     ].map(normalizeCacheText).join(":");
   }
 

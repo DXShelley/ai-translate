@@ -69,13 +69,13 @@ async function buildBrowser(browser) {
   fs.mkdirSync(path.join(outDir, 'icons'), { recursive: true });
   fs.mkdirSync(path.join(outDir, 'vendor'), { recursive: true });
 
-  // Copy static files
+  // Copy static files from src when they are shared, while keeping browser-specific manifests.
   const staticFiles = ['manifest.json', 'popup.html', 'popup.js', 'popup.css',
-                       'options.html', 'content.css'];
+                       'options.html', 'options.css', 'content.css'];
   for (const f of staticFiles) {
-    const src = path.join(outDir, f);
-    if (fs.existsSync(src)) {
-      fs.copyFileSync(src, path.join(outDir, f));
+    const source = f === 'manifest.json' ? path.join(outDir, f) : path.join(srcDir, f);
+    if (fs.existsSync(source)) {
+      fs.copyFileSync(source, path.join(outDir, f));
     }
   }
 

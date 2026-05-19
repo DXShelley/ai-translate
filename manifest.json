@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "AI Translate",
   "description": "Selection, sentence, and paragraph translation with an OpenAI-compatible local model.",
-  "version": "3.0.0",
-  "permissions": ["storage", "contextMenus", "activeTab"],
+  "version": "4.0.0",
+  "permissions": ["storage", "contextMenus", "activeTab", "commands", "tts"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "src/background.js"

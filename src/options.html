@@ -18,24 +18,34 @@
 
       <form id="settings" class="panel">
         <aside class="profile-sidebar">
-          <div class="profile-head">
-            <h2>模型配置</h2>
-            <div class="profile-head-actions">
-              <button id="addProfile" type="button" class="icon-button" title="新增配置" aria-label="新增配置">+</button>
-              <button id="duplicateProfile" type="button" class="icon-button" title="复制当前" aria-label="复制当前">⧉</button>
-              <button id="deleteProfile" type="button" class="icon-button danger-icon" title="删除当前" aria-label="删除当前">×</button>
-              <button id="exportConfig" type="button" class="icon-button" title="导出全部配置" aria-label="导出全部配置">⇩</button>
-              <button id="importConfig" type="button" class="icon-button" title="导入配置" aria-label="导入配置">⇧</button>
-              <input id="importConfigFile" type="file" accept="application/json,.json" hidden>
+          <div class="model-config-panel">
+            <div class="profile-head">
+              <h2>大模型配置</h2>
+              <div class="profile-head-actions">
+                <button id="addProfile" type="button" class="icon-button" title="新增配置" aria-label="新增配置">+</button>
+                <button id="duplicateProfile" type="button" class="icon-button" title="复制当前" aria-label="复制当前">⧉</button>
+                <button id="deleteProfile" type="button" class="icon-button danger-icon" title="删除当前" aria-label="删除当前">×</button>
+                <button id="exportConfig" type="button" class="icon-button" title="导出全部配置" aria-label="导出全部配置">⇩</button>
+                <button id="importConfig" type="button" class="icon-button" title="导入配置" aria-label="导入配置">⇧</button>
+                <input id="importConfigFile" type="file" accept="application/json,.json" hidden>
+              </div>
+            </div>
+            <div class="profile-body">
+              <div id="profileList" class="profile-list" role="listbox" aria-label="大模型配置列表"></div>
             </div>
           </div>
-          <div class="profile-body">
-            <div id="profileList" class="profile-list" role="listbox" aria-label="模型配置列表"></div>
+
+          <div class="global-settings-panel">
+            <button id="globalSettingsNav" type="button" class="sidebar-nav-item" aria-controls="globalSettingsDetail">
+              <span>全局设置</span>
+              <small>所有模型共用</small>
+            </button>
           </div>
         </aside>
 
         <div class="profile-content">
           <div class="profile-editor">
+            <div id="modelDetail" class="detail-view">
             <section class="section">
             <h2>接口预设</h2>
             <div class="form-grid">
@@ -114,99 +124,6 @@
           </section>
 
           <section class="section">
-            <h2>翻译参数</h2>
-            <div class="form-grid three">
-              <label>
-                <span>翻译方向</span>
-                <select id="translationMode" name="translationMode">
-                  <option value="auto-zh-en">自动中英互译</option>
-                  <option value="manual">手动指定</option>
-                </select>
-              </label>
-
-              <label>
-                <span>原文语言</span>
-                <input id="sourceLanguage" name="sourceLanguage" placeholder="自动检测" autocomplete="off">
-              </label>
-
-              <label>
-                <span>译文语言</span>
-                <select id="targetLanguage" name="targetLanguage">
-                  <option value="简体中文">简体中文</option>
-                  <option value="繁體中文">繁體中文</option>
-                  <option value="English">English</option>
-                  <option value="日本語">日本語</option>
-                  <option value="한국어">한국어</option>
-                  <option value="Français">Français</option>
-                  <option value="Deutsch">Deutsch</option>
-                  <option value="Español">Español</option>
-                </select>
-              </label>
-            </div>
-          </section>
-
-          <section class="section">
-            <h2>前端交互</h2>
-            <div class="form-grid three">
-              <label hidden>
-                <span>译文显示</span>
-                <select id="displayMode" name="displayMode">
-                  <option value="bilingual">双语对照</option>
-                  <option value="translationOnly">仅显示译文</option>
-                  <option value="sourceCollapsed">原文折叠</option>
-                </select>
-              </label>
-
-              <label hidden>
-                <span>双语布局</span>
-                <select id="bilingualLayout" name="bilingualLayout">
-                  <option value="vertical">上下对照</option>
-                  <option value="horizontal">左右对照</option>
-                </select>
-              </label>
-
-              <label>
-                <span>悬停翻译</span>
-                <select id="hoverTranslate" name="hoverTranslate">
-                  <option value="true">启用</option>
-                  <option value="false">关闭</option>
-                </select>
-              </label>
-
-              <label>
-                <span>悬停触发键</span>
-                <select id="hoverModifier" name="hoverModifier">
-                  <option value="ctrl">Ctrl</option>
-                  <option value="alt">Alt</option>
-                  <option value="shift">Shift</option>
-                  <option value="none">无需按键</option>
-                </select>
-              </label>
-
-              <label>
-                <span>输入框翻译</span>
-                <select id="inputTranslate" name="inputTranslate">
-                  <option value="true">启用</option>
-                  <option value="false">关闭</option>
-                </select>
-              </label>
-
-              <label>
-                <span>请求日志</span>
-                <select id="requestLogging" name="requestLogging">
-                  <option value="false">关闭</option>
-                  <option value="true">开启</option>
-                </select>
-              </label>
-
-              <label>
-                <span>触发空格次数</span>
-                <input id="inputTriggerSpaces" name="inputTriggerSpaces" type="number" min="2" max="6" step="1">
-              </label>
-            </div>
-          </section>
-
-          <section class="section">
             <h2>提示词</h2>
             <label>
               <span>System 角色提示词</span>
@@ -230,6 +147,108 @@
               <textarea id="profileText" class="profile-text" rows="10" spellcheck="false"></textarea>
             </label>
           </section>
+          </div>
+
+          <div id="globalSettingsDetail" class="detail-view" hidden>
+            <section class="section">
+              <h2>全局设置</h2>
+              <div class="form-grid three">
+                <label>
+                  <span>翻译方向</span>
+                  <select id="translationMode" name="translationMode">
+                    <option value="auto-zh-en">自动中英互译</option>
+                    <option value="manual">手动指定</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>原文语言</span>
+                  <input id="sourceLanguage" name="sourceLanguage" placeholder="自动检测" autocomplete="off">
+                </label>
+
+                <label>
+                  <span>译文语言</span>
+                  <select id="targetLanguage" name="targetLanguage">
+                    <option value="简体中文">简体中文</option>
+                    <option value="繁體中文">繁體中文</option>
+                    <option value="English">English</option>
+                    <option value="日本語">日本語</option>
+                    <option value="한국어">한국어</option>
+                    <option value="Français">Français</option>
+                    <option value="Deutsch">Deutsch</option>
+                    <option value="Español">Español</option>
+                  </select>
+                </label>
+
+                <label hidden>
+                  <span>译文显示</span>
+                  <select id="displayMode" name="displayMode">
+                    <option value="bilingual">双语对照</option>
+                    <option value="translationOnly">仅显示译文</option>
+                    <option value="sourceCollapsed">原文折叠</option>
+                  </select>
+                </label>
+
+                <label hidden>
+                  <span>双语布局</span>
+                  <select id="bilingualLayout" name="bilingualLayout">
+                    <option value="vertical">上下对照</option>
+                    <option value="horizontal">左右对照</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>悬停翻译</span>
+                  <select id="hoverTranslate" name="hoverTranslate">
+                    <option value="true">启用</option>
+                    <option value="false">关闭</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>悬停触发键</span>
+                  <select id="hoverModifier" name="hoverModifier">
+                    <option value="ctrl">Ctrl</option>
+                    <option value="alt">Alt</option>
+                    <option value="shift">Shift</option>
+                    <option value="none">无需按键</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>弹框语言</span>
+                  <select id="popupLanguage" name="popupLanguage">
+                    <option value="all">全部语言</option>
+                    <option value="en">English</option>
+                    <option value="zh">中文</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>输入框翻译</span>
+                  <select id="inputTranslate" name="inputTranslate">
+                    <option value="true">启用</option>
+                    <option value="false">关闭</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>请求日志</span>
+                  <select id="requestLogging" name="requestLogging">
+                    <option value="false">关闭</option>
+                    <option value="true">开启</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>触发空格次数</span>
+                  <input id="inputTriggerSpaces" name="inputTriggerSpaces" type="number" min="2" max="6" step="1">
+                </label>
+              </div>
+            </section>
+          </div>
 
           <footer class="actions">
             <div>

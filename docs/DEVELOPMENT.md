@@ -11,6 +11,8 @@
 - 监听选区、鼠标、键盘事件
 - 解析划词、句子、段落文本
 - 管理弹框 UI
+- 管理“选中文本 + Ctrl”触发条件
+- 根据 `settings.popupLanguage` 过滤弹框触发语言
 - 管理当前弹框 session 缓存
 - 管理单词查询内存缓存
 - 读写最近 100 条本地历史
@@ -24,12 +26,14 @@
 负责扩展后台能力：
 
 - 通过 `litBrowser.storage.sync` 读取模型配置
+- 读取全局翻译参数：`settings.translationMode`、`settings.sourceLanguage`、`settings.targetLanguage`
 - 处理右键菜单和快捷键消息
 - 调用 OpenAI 兼容接口
 - 模型优先级 fallback
 - `hy-mt*` 模型兼容提示格式
 - 词典 JSON 修复和格式化
 - 模型列表获取
+- 后台 TTS 后备朗读（`LIT_SPEAK_TEXT`）
 
 模型请求、鉴权、超时、错误归一化必须集中在 background 中处理。
 
@@ -47,15 +51,40 @@
 
 负责配置页：
 
-- 多模型配置
+- 左侧菜单、右侧详情布局
+- 多大模型配置管理
 - 当前启用模型
 - P1/P2/P3 优先级
-- 接口预设
-- 模型发现
-- 翻译参数
-- 前端交互设置
+- 接口预设和模型发现
+- 全局设置详情
+- 全局翻译参数：翻译方向、原文语言、译文语言
+- 全局前端交互设置
+- 全局弹框语言过滤设置
 
 配置页只保存配置，不承担翻译业务逻辑。
+
+模型配置和全局设置必须保持边界清晰：
+
+- 大模型配置只放模型相关字段，例如接口地址、接口路径、鉴权、模型 ID、温度、超时、优先级、提示词和 `extraBody`。
+- 全局设置放所有模型共享字段，例如翻译方向、原文语言、译文语言、弹框语言、悬停翻译、输入框翻译和请求日志开关。
+- `profileTextSnapshot()` 不应把全局设置字段写入单个模型 JSON。
+- `fillForm()` 和 `applyProfileTextToForm()` 不应把模型 JSON 中的全局字段覆盖到全局表单。
+
+### 构建脚本
+
+`scripts/build.js` 负责生成三类浏览器包和 zip：
+
+- `packages/chrome`：Manifest V3
+- `packages/edge`：Manifest V3
+- `packages/firefox`：Manifest V2
+
+构建规则：
+
+- 共享 HTML/CSS/JS 静态文件从 `src/` 同步到各浏览器包。
+- `manifest.json` 使用各浏览器包自己的文件，避免覆盖浏览器差异。
+- background 打包时会移除源文件中的 `importScripts(...)` loader，避免 Firefox MV2 background page 报错。
+- 创建 zip 时 Firefox 不打包 `install.rdf`，并保证 `manifest.json` 排在第一位。
+- 构建异常必须让 `npm run build` 返回非 0，不能只打印错误。
 
 ### MiniMax 预设
 
@@ -88,11 +117,29 @@ MiniMax 使用 OpenAI 兼容协议：
 
 ### 请求日志
 
-配置项 `settings.requestLogging` 默认关闭。开启后 background 会把每次大模型 chat 请求写入 `litBrowser.storage.local.requestLogs`，最多保留最近 50 条。
+配置项 `settings.requestLogging` 默认关闭。开启后 background 会把每次大模型 chat 请求写入 `litBrowser.storage.local.requestLogs`，最多保留最近 20 条。
 
 日志包含请求类型、模型配置名称、模型 ID、预设 ID、请求 URL、完整请求 body、HTTP 状态、原始响应文本、解析后的响应对象、成功状态、耗时和错误信息。
 
 日志可能包含用户选中文本、API 返回内容等敏感信息，因此默认关闭。
+
+当前日志策略：
+
+- 后台最多保留最近 20 条请求日志。
+- 新日志写入方式为 `[item, ...logs].slice(0, 20)`，超出部分按先进先出策略丢弃。
+- 配置页前台只展示最新 10 条日志。
+- 导出日志仍导出当前本地存储中的全部日志，最多 20 条。
+
+用户要求清空运行时会话/日志时，项目侧没有文件型会话数据。扩展请求日志在浏览器本地存储中，需要通过配置页“请求日志”面板的“清空”按钮删除。
+
+用户要求清空 Codex 会话时，只清理会话目录和索引文件：
+
+- `C:\Users\25433\.codex\sessions`
+- `C:\Users\25433\.codex\archived_sessions`
+- `C:\Users\25433\.codex\history.jsonl`
+- `C:\Users\25433\.codex\session_index.jsonl`
+
+不要删除 `auth.json`、`config.toml`、`skills`、`memories`、sqlite 状态库等非会话配置。
 
 ### 弹框 session 缓存
 
@@ -161,6 +208,36 @@ translation:${mode}:${normalizeText(text)}
 
 工具条单词输入框查询不走上述自动判断，始终切到 `selection` 页面。
 英文词典信息只对英文单词触发；中文词级选区只做划词翻译，不触发英文词典查询。
+
+## 弹框语言过滤
+
+`settings.popupLanguage` 控制弹框触发语言，默认 `all`。
+
+支持值：
+
+- `all`：全部语言
+- `en`：英文
+- `zh`：中文
+- `ja`：日文
+- `ko`：韩文
+
+content 端通过字符统计判断主语言。过滤入口必须覆盖：
+
+- 鼠标划词弹框
+- 悬停段落翻译
+- 右键/快捷键发来的 `LIT_TRANSLATE_SELECTION`
+
+该设置只控制是否弹框，不改变后台翻译目标语言。翻译方向仍由 `translationMode/sourceLanguage/targetLanguage` 决定。
+
+## 发音规则
+
+英文单词和例句发音按钮在 content 端处理：
+
+1. 优先使用页面上下文可用的 `speechSynthesis.speak()`，并同步发起，避免丢失用户点击激活。
+2. 如果 1.2 秒内没有触发 `onstart`，取消本次 Web Speech 并发送 `LIT_SPEAK_TEXT` 给 background。
+3. background 使用 `chrome.tts.speak()` 作为 Chrome/Edge 后备路径。
+
+Edge/Chrome manifest 需要 `tts` 权限。Firefox 包不添加 `tts` 权限，仍依赖 Web Speech。
 
 ## 翻译方向
 

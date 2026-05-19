@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "AI Translate",
   "description": "划词、句子和段落翻译，使用 OpenAI 兼容的本地大模型。",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "browser_specific_settings": {
     "gecko": {
       "id": "ai-translate@temp-translate",
@@ -16,7 +16,8 @@
     "storage",
     "contextMenus",
     "activeTab",
-    "tabs"
+    "tabs",
+    "<all_urls>"
   ],
   "background": {
     "scripts": ["vendor/jsonrepair.min.js", "browser-adapter.js", "background.js"],

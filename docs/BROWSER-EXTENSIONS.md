@@ -8,6 +8,29 @@
 | `AI-Translate-firefox.zip` | Firefox | MV2 |
 | `AI-Translate-edge.zip` | Edge | MV3 |
 
+## 构建与验证
+
+运行：
+
+```powershell
+npm run build
+```
+
+构建脚本会刷新：
+
+- `packages/chrome`
+- `packages/edge`
+- `packages/firefox`
+- 三个根目录发布包 zip
+
+发布前建议检查 zip 内版本和后台脚本：
+
+```powershell
+python -c "import zipfile,json; files=['AI-Translate-chrome.zip','AI-Translate-edge.zip','AI-Translate-firefox.zip']; [print(f, json.loads(zipfile.ZipFile(f).read('manifest.json'))['version'], 'importScripts' in zipfile.ZipFile(f).read('background.js').decode('utf-8')) for f in files]"
+```
+
+期望输出中版本为 `3.0.0`，且 `importScripts` 为 `False`。
+
 ## 安装步骤
 
 ### Chrome / Edge
@@ -101,6 +124,27 @@ with zipfile.ZipFile('out.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
 
 **解决**: 确保 `browser-adapter.js` 在 `background.js` 之前加载，且 runtime API 可用。
 
+### Firefox: importScripts is not defined
+
+**错误**: `Uncaught ReferenceError: importScripts is not defined`
+
+**原因**: Firefox MV2 使用普通 background page，不是 service worker。打包后的 `background.js` 如果保留源文件中的 `importScripts("vendor/jsonrepair.min.js")` 和 `importScripts("browser-adapter.js")`，会导致后台页面启动失败，后续配置页会出现 `Receiving end does not exist`。
+
+**解决**:
+
+- `scripts/build.js` 中 `stripBackgroundLoaders()` 会在打包 background 时移除 loader。
+- Firefox manifest 仍通过 `background.scripts` 顺序加载 `vendor/jsonrepair.min.js`、`browser-adapter.js`、`background.js`。
+- 发布前用上面的 zip 验证命令确认 `importScripts` 为 `False`。
+
+### Edge: 发音无声
+
+Edge 发音有两条路径：
+
+1. `src/content.js` 在用户点击发音按钮时同步调用 `speechSynthesis.speak()`，尽量保留用户激活。
+2. 如果 1.2 秒内没有触发 `onstart`，fallback 到后台 `LIT_SPEAK_TEXT`，由 `chrome.tts.speak()` 朗读。
+
+Edge/Chrome manifest 需要包含 `tts` 权限。更新扩展后必须重新加载扩展页面，否则旧 content script 仍在网页中运行。
+
 ### 所有浏览器: 无法获取模型列表
 
 1. 确认本地模型服务已启动（如 LM Studio）
@@ -118,6 +162,43 @@ with zipfile.ZipFile('out.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
 | Firefox | `browser.*`（兼容 `chrome.*`） | MV2 |
 
 `browser-adapter.js` 自动检测浏览器类型并适配 API 调用。
+
+### Edge Add-ons 发布
+
+Edge 插件创建/发布入口：
+
+- `https://partner.microsoft.com/dashboard/microsoftedge/public/login`
+- `https://developer.microsoft.com/microsoft-edge/extensions`
+
+官方发布说明：
+
+- `https://learn.microsoft.com/en-us/microsoft-edge/extensions-chromium/publish/publish-extension`
+
+上传包：
+
+- `AI-Translate-edge.zip`
+
+权限说明建议：
+
+- `<all_urls>`：在网页中识别选中文本并显示翻译弹框。
+- `storage`：保存模型、交互和日志配置。
+- `contextMenus`：右键翻译。
+- `tts`：朗读英文单词和例句。
+
+Edge 商店图片资源：
+
+| 文件 | 用途 | 尺寸 |
+|------|------|------|
+| `assets/edge-store/edge-logo-300.png` | 扩展徽标 | 300 x 300 |
+| `assets/edge-store/screenshot-translation-1280x800.png` | 截图 | 1280 x 800 |
+| `assets/edge-store/screenshot-settings-1280x800.png` | 截图 | 1280 x 800 |
+| `assets/edge-store/screenshot-packages-1280x800.png` | 截图 | 1280 x 800 |
+
+重新生成：
+
+```powershell
+python scripts\generate-edge-store-assets.py
+```
 
 ### 文件结构
 

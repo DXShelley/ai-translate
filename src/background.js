@@ -38,9 +38,21 @@ const DEFAULT_CONFIG = {
     inputTranslate: true,
     inputTriggerSpaces: 3,
     bilingualLayout: "vertical",
-    requestLogging: false
+    requestLogging: false,
+    popupLanguage: "all",
+    translationMode: DEFAULT_PROFILE.translationMode,
+    sourceLanguage: DEFAULT_PROFILE.sourceLanguage,
+    targetLanguage: DEFAULT_PROFILE.targetLanguage
   }
 };
+
+const BUILTIN_WORD_API_ADAPTERS = [
+  {
+    id: "youdao-mobile",
+    name: "有道移动词典",
+    query: queryYoudaoMobileWordInfo
+  }
+];
 
 const browserApi = globalThis.litBrowser;
 
@@ -101,11 +113,26 @@ browserApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => sendResponse({ ok: false, error: normalizeError(error) }));
     return true;
   }
+
+  if (message?.type === "LIT_SPEAK_TEXT") {
+    speakText(message.payload)
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((error) => sendResponse({ ok: false, error: normalizeError(error) }));
+    return true;
+  }
+
+  if (message?.type === "LIT_FETCH_SPEECH_AUDIO") {
+    fetchSpeechAudio(message.payload)
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((error) => sendResponse({ ok: false, error: normalizeError(error) }));
+    return true;
+  }
 });
 
 async function getCurrentSettings() {
   const saved = await browserApi.storage.sync.get(null);
-  return { ...DEFAULT_CONFIG.settings, ...(saved.settings || {}) };
+  const profiles = Array.isArray(saved.profiles) && saved.profiles.length ? saved.profiles : [saved];
+  return normalizeSettings({ ...(profiles[0] || {}), ...(saved.settings || {}) });
 }
 
 async function getConfig() {
@@ -121,8 +148,48 @@ async function getConfig() {
     activeProfileId,
     profiles,
     activeProfile: profiles.find((profile) => profile.id === activeProfileId) || profiles[0],
-    settings: { ...DEFAULT_CONFIG.settings, ...(saved.settings || {}) }
+    settings: normalizeSettings({ ...(profiles[0] || {}), ...(saved.settings || {}) })
   };
+}
+
+function normalizeSettings(source = {}) {
+  return {
+    displayMode: ["bilingual", "translationOnly", "sourceCollapsed"].includes(source.displayMode)
+      ? source.displayMode
+      : DEFAULT_CONFIG.settings.displayMode,
+    hoverTranslate: typeof source.hoverTranslate === "boolean"
+      ? source.hoverTranslate
+      : DEFAULT_CONFIG.settings.hoverTranslate,
+    hoverModifier: ["ctrl", "alt", "shift", "none"].includes(source.hoverModifier)
+      ? source.hoverModifier
+      : DEFAULT_CONFIG.settings.hoverModifier,
+    inputTranslate: typeof source.inputTranslate === "boolean"
+      ? source.inputTranslate
+      : DEFAULT_CONFIG.settings.inputTranslate,
+    inputTriggerSpaces: clampNumber(Number(source.inputTriggerSpaces || DEFAULT_CONFIG.settings.inputTriggerSpaces), 2, 6),
+    bilingualLayout: ["vertical", "horizontal"].includes(source.bilingualLayout)
+      ? source.bilingualLayout
+      : DEFAULT_CONFIG.settings.bilingualLayout,
+    requestLogging: typeof source.requestLogging === "boolean"
+      ? source.requestLogging
+      : DEFAULT_CONFIG.settings.requestLogging,
+    translationMode: ["auto-zh-en", "manual"].includes(source.translationMode)
+      ? source.translationMode
+      : DEFAULT_CONFIG.settings.translationMode,
+    sourceLanguage: String(source.sourceLanguage || DEFAULT_CONFIG.settings.sourceLanguage).trim() || DEFAULT_CONFIG.settings.sourceLanguage,
+    targetLanguage: String(source.targetLanguage || DEFAULT_CONFIG.settings.targetLanguage).trim() || DEFAULT_CONFIG.settings.targetLanguage,
+    popupLanguage: normalizePopupLanguage(source.popupLanguage || DEFAULT_CONFIG.settings.popupLanguage)
+  };
+}
+
+function normalizePopupLanguage(value) {
+  const code = String(value || "all").trim().toLowerCase();
+  if (["", "all", "auto", "*", "any"].includes(code)) return "all";
+  if (["en", "eng", "english"].includes(code)) return "en";
+  if (["zh", "zh-cn", "zh-tw", "cn", "chinese", "中文", "简体中文", "繁體中文"].includes(code)) return "zh";
+  if (["ja", "jp", "japanese", "日本語"].includes(code)) return "ja";
+  if (["ko", "kr", "korean", "한국어"].includes(code)) return "ko";
+  return "all";
 }
 
 async function translate(payload) {
@@ -136,10 +203,11 @@ async function translate(payload) {
       throw new Error("没有可翻译的文本");
     }
 
-    const targetLanguage = resolveTargetLanguage(text, payload.testProfile);
+    const settings = await getCurrentSettings();
+    const targetLanguage = resolveTargetLanguage(text, settings);
     const requestContext = {
       ...context,
-      sourceLanguage: resolveSourceLanguage(payload.testProfile)
+      sourceLanguage: resolveSourceLanguage(settings)
     };
     const messages = buildTranslationMessages(
       payload.testProfile,
@@ -152,7 +220,7 @@ async function translate(payload) {
       payload.testProfile,
       messages,
       Number(payload.testProfile.temperature) || 0,
-      { type: "translate", settings: await getCurrentSettings() }
+      { type: "translate", settings }
     );
 
     const content = extractChatContent(body);
@@ -183,10 +251,10 @@ async function translate(payload) {
   }
 
   return tryProfiles(config, async (profile) => {
-    const targetLanguage = resolveTargetLanguage(text, profile);
+    const targetLanguage = resolveTargetLanguage(text, config.settings);
     const requestContext = {
       ...context,
-      sourceLanguage: resolveSourceLanguage(profile)
+      sourceLanguage: resolveSourceLanguage(config.settings)
     };
     const messages = buildTranslationMessages(profile, text, mode, requestContext, targetLanguage);
     const body = await requestChatCompletion(
@@ -220,6 +288,11 @@ async function getWordInfo(payload) {
 
   if (!word) {
     throw new Error("没有可查询的单词");
+  }
+
+  const adapterInfo = await queryWordInfoAdapters(word);
+  if (adapterInfo) {
+    return adapterInfo;
   }
 
   return tryProfiles(config, async (profile) => {
@@ -271,6 +344,501 @@ async function listModels(profilePayload) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function speakText(payload) {
+  const text = String(payload?.text || "").trim();
+  const lang = String(payload?.lang || "en-US").trim() || "en-US";
+  const rate = clampNumber(Number(payload?.rate || 1), 0.1, 10);
+  const pitch = clampNumber(Number(payload?.pitch || 1), 0, 2);
+  const volume = clampNumber(Number(payload?.volume || 1), 0, 1);
+  if (!text) throw new Error("没有可朗读的文本");
+
+  const tts = browserApi.raw?.tts;
+  if (!tts?.speak) throw new Error("当前浏览器不支持扩展朗读接口");
+  const voice = await findExtensionTtsVoice(tts, lang);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (handler, value) => {
+      if (settled) return;
+      settled = true;
+      handler(value);
+    };
+
+    try {
+      tts.stop?.();
+      tts.speak(text, {
+        lang,
+        rate,
+        pitch,
+        volume,
+        enqueue: false,
+        ...(voice?.voiceName ? { voiceName: voice.voiceName } : {}),
+        onEvent(event) {
+          if (event?.type === "start") {
+            finish(resolve, { engine: "extension-tts", voiceName: voice?.voiceName || "" });
+            return;
+          }
+          if (event?.type === "error") {
+            finish(reject, new Error(event.errorMessage || "扩展朗读失败"));
+            return;
+          }
+          if (event?.type === "interrupted" || event?.type === "cancelled") {
+            finish(reject, new Error("扩展朗读已中断"));
+          }
+        }
+      }, () => {
+        const lastError = browserApi.raw?.runtime?.lastError;
+        if (lastError) {
+          finish(reject, new Error(lastError.message || String(lastError)));
+          return;
+        }
+        finish(resolve, { engine: "extension-tts", voiceName: voice?.voiceName || "" });
+      });
+    } catch (error) {
+      finish(reject, error);
+    }
+  });
+}
+
+async function fetchSpeechAudio(payload) {
+  const audioUrl = normalizeSpeechAudioUrl(payload?.url);
+  if (!audioUrl) throw new Error("无效的发音音频地址");
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(audioUrl, {
+      method: "GET",
+      signal: controller.signal,
+      cache: "no-store",
+      credentials: "include",
+      referrer: "https://mobile.youdao.com/",
+      headers: {
+        Accept: "audio/webm,audio/ogg,audio/wav,audio/*;q=0.9,application/ogg;q=0.7,*/*;q=0.5",
+        "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.6,en;q=0.5",
+        Range: "bytes=0-",
+        Pragma: "no-cache",
+        "Cache-Control": "no-cache"
+      }
+    });
+    if (!response.ok && response.status !== 206) {
+      throw new Error(`发音音频请求失败 (${response.status}): ${response.statusText}`);
+    }
+
+    const contentType = normalizeAudioContentType(response.headers.get("content-type"));
+    const buffer = await response.arrayBuffer();
+    if (!buffer.byteLength) throw new Error("发音音频为空");
+
+    return {
+      audioUrl,
+      contentType,
+      dataUrl: `data:${contentType};base64,${arrayBufferToBase64(buffer)}`
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function normalizeSpeechAudioUrl(url) {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  let parsed;
+  try {
+    parsed = new URL(value.startsWith("//") ? `https:${value}` : value);
+  } catch {
+    return "";
+  }
+  if (parsed.protocol !== "https:" || parsed.hostname !== "dict.youdao.com" || parsed.pathname !== "/dictvoice") {
+    return "";
+  }
+  return parsed.href;
+}
+
+function normalizeAudioContentType(contentType) {
+  const value = String(contentType || "").split(";")[0].trim().toLowerCase();
+  if (value && /^audio\//.test(value)) return value;
+  return "audio/mpeg";
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function queryWordInfoAdapters(word) {
+  for (const adapter of BUILTIN_WORD_API_ADAPTERS) {
+    try {
+      const info = await adapter.query(word);
+      if (hasWordInfoContent(info)) {
+        return withWordInfoAdapterMeta(info, adapter);
+      }
+    } catch (error) {
+      console.warn(`${adapter.name || adapter.id} 查询失败，继续尝试下一个词典适配器:`, normalizeError(error));
+    }
+  }
+  return null;
+}
+
+function withWordInfoAdapterMeta(info, adapter) {
+  return {
+    ...info,
+    raw: {
+      ...(info?.raw && typeof info.raw === "object" ? info.raw : {}),
+      adapterId: adapter.id,
+      adapterName: adapter.name || adapter.id
+    }
+  };
+}
+
+async function queryYoudaoMobileWordInfo(word) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  const url = `https://mobile.youdao.com/dict?le=eng&q=${encodeURIComponent(word)}`;
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"
+      }
+    });
+    const html = await response.text();
+    if (!response.ok) {
+      throw new Error(`有道词典请求失败 (${response.status}): ${response.statusText}`);
+    }
+    const wordInfo = parseYoudaoMobileWordInfo(html, word);
+    if (!wordInfo) return null;
+    const supplements = await fetchYoudaoMobileSupplements(word);
+    return mergeWordInfo(wordInfo, supplements);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchYoudaoMobileSupplements(word) {
+  const [englishDefinitions, specialDefinitions, synonyms, examples] = await Promise.all([
+    fetchYoudaoMobileSection(word, "ee").then(parseYoudaoEnglishDefinitions).catch(() => []),
+    fetchYoudaoMobileSection(word, "special").then(parseYoudaoSpecialDefinitions).catch(() => []),
+    fetchYoudaoMobileSection(word, "syno").then(parseYoudaoSynonyms).catch(() => []),
+    fetchYoudaoMobileSection(word, "blng_sents_part").then(parseYoudaoBilingualExamples).catch(() => [])
+  ]);
+
+  return {
+    definitionsEn: englishDefinitions,
+    webDefinitions: specialDefinitions,
+    synonyms,
+    examples
+  };
+}
+
+async function fetchYoudaoMobileSection(word, dict) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  const url = `https://mobile.youdao.com/singledict?q=${encodeURIComponent(word)}&dict=${encodeURIComponent(dict)}&le=eng&more=false`;
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      referrer: "https://mobile.youdao.com/",
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"
+      }
+    });
+    if (!response.ok) return "";
+    return response.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function mergeWordInfo(base, additions) {
+  return formatWordInfoJson({
+    ...base,
+    definitionsEn: [
+      ...normalizeArray(base?.definitionsEn),
+      ...normalizeArray(additions?.definitionsEn)
+    ],
+    webDefinitions: [
+      ...normalizeArray(base?.webDefinitions),
+      ...normalizeArray(additions?.webDefinitions)
+    ],
+    synonyms: [
+      ...normalizeArray(base?.synonyms),
+      ...normalizeArray(additions?.synonyms)
+    ],
+    examples: [
+      ...normalizeExamples(base?.examples),
+      ...normalizeExamples(additions?.examples)
+    ],
+    raw: {
+      ...(base?.raw && typeof base.raw === "object" ? base.raw : {}),
+      supplements: additions
+    }
+  });
+}
+
+function parseYoudaoMobileWordInfo(html, queryWord) {
+  const text = String(html || "");
+  if (!text || /该词条暂未被收录/i.test(text)) return null;
+
+  const basicSection = extractHtmlSection(text, /<div\s+id=["']ec["'][^>]*>/i, /<div\s+id=["']collins_contentWrp["'][^>]*>/i);
+  if (!basicSection) return null;
+
+  const phonetics = extractYoudaoPhonetics(basicSection);
+  const speechUrls = extractYoudaoSpeechUrls(basicSection);
+  const partsOfSpeech = extractYoudaoMeanings(basicSection);
+  const inflections = extractYoudaoInflections(basicSection);
+  const word = extractYoudaoHeadword(basicSection) || queryWord;
+
+  return formatWordInfoJson({
+    word,
+    phoneticUS: phonetics.us,
+    phoneticUK: phonetics.uk,
+    speechUrls,
+    partsOfSpeech,
+    inflections,
+    definitionsZh: partsOfSpeech.map((item) => item.pos ? `${item.pos} ${item.meaning}` : item.meaning),
+    definitionsEn: [],
+    webDefinitions: [],
+    synonyms: [],
+    antonyms: [],
+    examples: [],
+    raw: {
+      source: "youdao-mobile",
+      url: `https://mobile.youdao.com/dict?le=eng&q=${encodeURIComponent(queryWord)}`
+    }
+  });
+}
+
+function parseYoudaoEnglishDefinitions(html) {
+  const definitions = [];
+  const pattern = /<li\b[^>]*class=["'][^"']*\bper-tran\b[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi;
+  let match;
+  while ((match = pattern.exec(String(html || "")))) {
+    const text = cleanHtmlText(match[1])
+      .replace(/^\d+\.\s*/, "")
+      .replace(/^[a-z]+\.\s*/i, "")
+      .trim();
+    if (text) definitions.push(text);
+  }
+  return uniqueStrings(definitions);
+}
+
+function parseYoudaoSpecialDefinitions(html) {
+  const definitions = [];
+  const items = String(html || "").match(/<li\b[^>]*class=["'][^"']*\bmcols-layout\b[^"']*["'][^>]*>[\s\S]*?<\/li>/gi) || [];
+  for (const item of items) {
+    const field = cleanHtmlText((/<p\s+class=["']grey["'][^>]*>([\s\S]*?)<\/p>/i.exec(item) || [])[1] || "");
+    const terms = [];
+    const termPattern = /<p>\s*<span[^>]*>([\s\S]*?)<\/span>[\s\S]*?<\/p>/gi;
+    let termMatch;
+    while ((termMatch = termPattern.exec(item))) {
+      const term = cleanHtmlText(termMatch[1]);
+      if (term) terms.push(term);
+    }
+    for (const term of terms) {
+      definitions.push(field ? `${field}：${term}` : term);
+    }
+  }
+  return uniqueStrings(definitions);
+}
+
+function parseYoudaoSynonyms(html) {
+  const synonyms = [];
+  const linkPattern = /<a\b[^>]*class=["'][^"']*\bclickable\b[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = linkPattern.exec(String(html || "")))) {
+    const word = cleanHtmlText(match[1]);
+    if (word) synonyms.push(word);
+  }
+  return uniqueStrings(synonyms);
+}
+
+function parseYoudaoBilingualExamples(html) {
+  const examples = [];
+  const itemPattern = /<li\b[^>]*class=["'][^"']*\bmcols-layout\b[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi;
+  let match;
+  while ((match = itemPattern.exec(String(html || "")))) {
+    const item = match[1];
+    const audioUrl = normalizeYoudaoAudioUrl(decodeHtmlEntities((/data-rel=["']([^"']+)["']/i.exec(item) || [])[1] || ""));
+    const paragraphs = [];
+    const pPattern = /<p\b([^>]*)>([\s\S]*?)<\/p>/gi;
+    let pMatch;
+    while ((pMatch = pPattern.exec(item))) {
+      const className = pMatch[1] || "";
+      const text = cleanHtmlText(pMatch[2]);
+      if (!text || /speech-size/.test(className)) continue;
+      paragraphs.push({ className, text });
+    }
+    const en = paragraphs.find((part) => !/\bgrey\b/.test(part.className))?.text || "";
+    const zh = paragraphs.find((part) => /\bgrey\b/.test(part.className))?.text || "";
+    if (en) examples.push({ en, zh, audioUrl });
+  }
+  return examples;
+}
+
+function uniqueStrings(items) {
+  const seen = new Set();
+  const result = [];
+  for (const item of items) {
+    const text = String(item || "").trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    result.push(text);
+  }
+  return result;
+}
+
+function extractHtmlSection(html, startPattern, endPattern) {
+  const startMatch = startPattern.exec(html);
+  if (!startMatch) return "";
+  const start = startMatch.index;
+  const rest = html.slice(start + startMatch[0].length);
+  const endMatch = endPattern.exec(rest);
+  return endMatch ? html.slice(start, start + startMatch[0].length + endMatch.index) : html.slice(start);
+}
+
+function extractYoudaoHeadword(section) {
+  const match = /<h2\b[^>]*>[\s\S]*?<span\b[^>]*>\s*([\s\S]*?)\s*<\/span>/i.exec(section);
+  return cleanHtmlText(match?.[1] || "");
+}
+
+function extractYoudaoPhonetics(section) {
+  const result = { us: "", uk: "" };
+  const pattern = /<span\b[^>]*>\s*(英|美)[\s\S]*?<span\s+class=["']phonetic["'][^>]*>\s*([^<]*)<\/span>/gi;
+  let match;
+  while ((match = pattern.exec(section))) {
+    const value = cleanHtmlText(match[2]).replace(/^\[|\]$/g, "");
+    if (match[1] === "美") result.us = value;
+    if (match[1] === "英") result.uk = value;
+  }
+  return result;
+}
+
+function extractYoudaoSpeechUrls(section) {
+  const result = { us: "", uk: "" };
+  const pattern = /data-rel=["']([^"']*dictvoice\?[^"']*type=(1|2)[^"']*)["']/gi;
+  let match;
+  while ((match = pattern.exec(section))) {
+    const url = normalizeYoudaoAudioUrl(decodeHtmlEntities(match[1]));
+    if (match[2] === "2") result.us = url;
+    if (match[2] === "1") result.uk = url;
+  }
+  return result;
+}
+
+function normalizeYoudaoAudioUrl(url) {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  if (value.startsWith("//")) return `https:${value}`;
+  if (/^https?:\/\//i.test(value)) return value;
+  return "";
+}
+
+function extractYoudaoMeanings(section) {
+  const listMatch = /<ul\b[^>]*>([\s\S]*?)<\/ul>/i.exec(section);
+  if (!listMatch) return [];
+  const meanings = [];
+  const itemPattern = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+  let match;
+  while ((match = itemPattern.exec(listMatch[1]))) {
+    const text = cleanHtmlText(match[1]);
+    if (!text) continue;
+    const posMatch = /^([a-z]+\.|abbr\.|aux\.|conj\.|det\.|interj\.|num\.|prep\.|pron\.)\s*(.+)$/i.exec(text);
+    meanings.push({
+      pos: posMatch ? posMatch[1] : "",
+      meaning: posMatch ? posMatch[2] : text
+    });
+  }
+  return meanings;
+}
+
+function extractYoudaoInflections(section) {
+  const inflections = [];
+  const pattern = /<p\s+class=["']grey["'][^>]*>([\s\S]*?)<\/p>/gi;
+  let match;
+  while ((match = pattern.exec(section))) {
+    const text = cleanHtmlText(match[1]);
+    if (text) inflections.push(text);
+  }
+  return inflections;
+}
+
+function cleanHtmlText(value) {
+  return decodeHtmlEntities(String(value || "").replace(/<[^>]*>/g, " "))
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .trim();
+}
+
+function decodeHtmlEntities(value) {
+  const named = {
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: "\"",
+    apos: "'",
+    nbsp: " "
+  };
+  return String(value || "").replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (_, entity) => {
+    const key = entity.toLowerCase();
+    if (key[0] === "#") {
+      const code = key[1] === "x" ? parseInt(key.slice(2), 16) : parseInt(key.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : "";
+    }
+    return named[key] ?? "";
+  });
+}
+
+function hasWordInfoContent(info) {
+  return Boolean(
+    info &&
+    (
+      info.phoneticUS ||
+      info.phoneticUK ||
+      info.partsOfSpeech?.length ||
+      info.definitionsZh?.length ||
+      info.definitionsEn?.length ||
+      info.webDefinitions?.length
+    )
+  );
+}
+
+function findExtensionTtsVoice(tts, lang) {
+  if (!tts?.getVoices) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      tts.getVoices((voices) => {
+        const normalizedLang = String(lang || "en-US").toLowerCase();
+        const family = normalizedLang.slice(0, 2);
+        const list = Array.isArray(voices) ? voices : [];
+        resolve(
+          list.find((voice) => String(voice.lang || "").toLowerCase() === normalizedLang) ||
+          list.find((voice) =>
+            String(voice.lang || "").toLowerCase().startsWith(`${family}-`) &&
+            /microsoft|google|apple|system/i.test(`${voice.voiceName || ""} ${voice.extensionId || ""}`)
+          ) ||
+          list.find((voice) => String(voice.lang || "").toLowerCase().startsWith(`${family}-`)) ||
+          null
+        );
+      });
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
 function buildWordInfoPrompt(word) {
@@ -372,7 +940,16 @@ function formatWordInfoJson(parsed) {
     synonyms: normalizeArray(parsed?.synonyms),
     antonyms: normalizeArray(parsed?.antonyms),
     examples: normalizeExamples(parsed?.examples),
+    speechUrls: normalizeSpeechUrls(parsed?.speechUrls || parsed?.audioUrls || parsed?.pronunciationUrls),
     raw: parsed
+  };
+}
+
+function normalizeSpeechUrls(value) {
+  const source = normalizeObject(value, {});
+  return {
+    us: normalizeYoudaoAudioUrl(source.us || source.US || source.american || source.am),
+    uk: normalizeYoudaoAudioUrl(source.uk || source.UK || source.british || source.en)
   };
 }
 
@@ -430,10 +1007,11 @@ function formatPhonetic(value) {
 function normalizeExamples(value) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 3).map((item) => {
-    if (typeof item === "string") return { en: item, zh: "" };
+    if (typeof item === "string") return { en: item, zh: "", audioUrl: "" };
     return {
       en: String(item?.en || item?.sentence || "").trim(),
-      zh: String(item?.zh || item?.translation || "").trim()
+      zh: String(item?.zh || item?.translation || "").trim(),
+      audioUrl: normalizeYoudaoAudioUrl(item?.audioUrl || item?.speechUrl || item?.audio || "")
     };
   }).filter((item) => item.en);
 }
@@ -563,7 +1141,7 @@ async function saveRequestLog(settings, entry) {
     responseText: entry.responseText,
     error: entry.error || ""
   };
-  await browserApi.storage.local.set({ requestLogs: [item, ...logs].slice(0, 50) }).catch(() => {});
+  await browserApi.storage.local.set({ requestLogs: [item, ...logs].slice(0, 20) }).catch(() => {});
 }
 
 function buildChatRequestBody(profile, messages, temperature) {
@@ -609,7 +1187,7 @@ function buildHeaders(config) {
   return headers;
 }
 
-function buildTranslationMessages(profile, text, mode, context, targetLanguage = resolveTargetLanguage(text, profile)) {
+function buildTranslationMessages(profile, text, mode, context, targetLanguage = resolveTargetLanguage(text, DEFAULT_CONFIG.settings)) {
   if (isHyTranslationModel(profile) || isTranslateGemmaModel(profile)) {
     return [{ role: "user", content: buildHyTranslationPrompt(text, targetLanguage, context) }];
   }
@@ -633,15 +1211,27 @@ function buildTranslationMessages(profile, text, mode, context, targetLanguage =
   ];
 }
 
-function resolveTargetLanguage(text, profile) {
-  if (profile.translationMode === "manual") {
-    return profile.targetLanguage || DEFAULT_PROFILE.targetLanguage;
+function resolveTargetLanguage(text, settings) {
+  const translationSettings = getTranslationSettings(settings);
+  if (translationSettings.translationMode === "manual") {
+    return translationSettings.targetLanguage;
   }
-  return isMostlyChinese(text) ? "English" : (profile.targetLanguage || DEFAULT_PROFILE.targetLanguage);
+  return isMostlyChinese(text) ? "English" : translationSettings.targetLanguage;
 }
 
-function resolveSourceLanguage(profile) {
-  return profile.translationMode === "manual" ? profile.sourceLanguage : "";
+function resolveSourceLanguage(settings) {
+  const translationSettings = getTranslationSettings(settings);
+  return translationSettings.translationMode === "manual" ? translationSettings.sourceLanguage : "";
+}
+
+function getTranslationSettings(settings = {}) {
+  return {
+    translationMode: ["auto-zh-en", "manual"].includes(settings.translationMode)
+      ? settings.translationMode
+      : DEFAULT_CONFIG.settings.translationMode,
+    sourceLanguage: String(settings.sourceLanguage || DEFAULT_CONFIG.settings.sourceLanguage).trim() || DEFAULT_CONFIG.settings.sourceLanguage,
+    targetLanguage: String(settings.targetLanguage || DEFAULT_CONFIG.settings.targetLanguage).trim() || DEFAULT_CONFIG.settings.targetLanguage
+  };
 }
 
 function isMostlyChinese(text) {
