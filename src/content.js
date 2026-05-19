@@ -43,6 +43,7 @@
   let panel;
   let dragState = null;
   let suppressNextPopoverClick = false;
+  let activeSpeechAudio = null;
   const browserApi = globalThis.litBrowser;
   const speechController = createSpeechController();
 
@@ -1271,23 +1272,36 @@
       let settled = false;
       const audio = new Audio(sourceUrl);
       audio.preload = "auto";
+      audio.volume = 1;
       const finish = (result) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        audio.onplay = null;
+        audio.onplaying = null;
         audio.onerror = null;
+        if (!result.ok && activeSpeechAudio === audio) {
+          activeSpeechAudio = null;
+        }
         resolve(result);
       };
       const timer = setTimeout(() => {
         audio.pause();
         finish({ ok: false, error: "API 音频启动超时" });
-      }, 2500);
+      }, 5000);
 
-      audio.onplay = () => finish({ ok: true, engine });
-      audio.onerror = () => finish({ ok: false, error: "API 音频播放失败" });
+      audio.onplaying = () => finish({ ok: true, engine });
+      audio.onended = () => {
+        if (activeSpeechAudio === audio) activeSpeechAudio = null;
+      };
+      audio.onerror = () => finish({ ok: false, error: audio.error?.message || "API 音频播放失败" });
 
       try {
+        if (activeSpeechAudio) {
+          activeSpeechAudio.pause();
+          activeSpeechAudio = null;
+        }
+        activeSpeechAudio = audio;
+        audio.load();
         audio.play().catch((error) => {
           finish({ ok: false, error: error?.message || String(error) });
         });
