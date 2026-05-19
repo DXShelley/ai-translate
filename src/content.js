@@ -1359,20 +1359,6 @@
     };
   }
 
-  function resolveTranslationSpeechLang(text, targetLanguage) {
-    const language = String(targetLanguage || state.settings.targetLanguage || "").trim().toLowerCase();
-    if (/english|英语|英文|en\b/.test(language)) return "en-US";
-    if (/繁體|繁体|traditional|zh-tw|zh-hk/.test(language)) return "zh-TW";
-    if (/中文|简体|chinese|zh|汉语/.test(language)) return "zh-CN";
-    if (/日本|日语|japanese|ja/.test(language)) return "ja-JP";
-    if (/韩|韓|korean|ko/.test(language)) return "ko-KR";
-    if (matchesTextLanguage(text, "en")) return "en-US";
-    if (matchesTextLanguage(text, "zh")) return "zh-CN";
-    if (matchesTextLanguage(text, "ja")) return "ja-JP";
-    if (matchesTextLanguage(text, "ko")) return "ko-KR";
-    return "en-US";
-  }
-
   function normalizeSpeechError(error) {
     const message = error?.message || String(error || "");
     if (/Browser API not available: speak|不支持扩展朗读接口|tts/i.test(message)) {
@@ -1529,18 +1515,6 @@
     textNode.className = "lit-result-text";
     textNode.textContent = translation;
     container.appendChild(textNode);
-
-    if (isError || !translation || translation === "翻译中...") return;
-    const actions = document.createElement("div");
-    actions.className = "lit-result-actions";
-    actions.innerHTML = formatSpeechButton(
-      translation,
-      resolveTranslationSpeechLang(translation, result?.targetLanguage),
-      "translation",
-      "朗读译文",
-      "朗读译文"
-    );
-    container.appendChild(actions);
   }
 
   function normalizeTranslationResult(result, source) {
