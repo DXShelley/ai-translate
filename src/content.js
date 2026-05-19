@@ -9,6 +9,7 @@
     inputTriggerSpaces: 3,
     bilingualLayout: "vertical",
     popupLanguage: "all",
+    builtinApiEnabled: true,
     translationMode: "auto-zh-en",
     sourceLanguage: "自动检测",
     targetLanguage: "简体中文"

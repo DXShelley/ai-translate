@@ -39,6 +39,7 @@ const DEFAULT_CONFIG = {
     inputTriggerSpaces: 3,
     bilingualLayout: "vertical",
     requestLogging: false,
+    builtinApiEnabled: true,
     popupLanguage: "all",
     translationMode: DEFAULT_PROFILE.translationMode,
     sourceLanguage: DEFAULT_PROFILE.sourceLanguage,
@@ -181,6 +182,9 @@ function normalizeSettings(source = {}) {
     requestLogging: typeof source.requestLogging === "boolean"
       ? source.requestLogging
       : DEFAULT_CONFIG.settings.requestLogging,
+    builtinApiEnabled: typeof source.builtinApiEnabled === "boolean"
+      ? source.builtinApiEnabled
+      : DEFAULT_CONFIG.settings.builtinApiEnabled,
     translationMode: ["auto-zh-en", "manual"].includes(source.translationMode)
       ? source.translationMode
       : DEFAULT_CONFIG.settings.translationMode,
@@ -303,7 +307,7 @@ async function getWordInfo(payload) {
     throw new Error("没有可查询的单词");
   }
 
-  const adapterInfo = await queryWordInfoAdapters(word);
+  const adapterInfo = config.settings.builtinApiEnabled === false ? null : await queryWordInfoAdapters(word);
   if (adapterInfo) {
     return adapterInfo;
   }
@@ -416,6 +420,7 @@ async function speakText(payload) {
 }
 
 async function queryTranslationAdapters(text, mode, settings) {
+  if (settings?.builtinApiEnabled === false) return null;
   if (!shouldUseBuiltinTranslationAdapter(text, mode)) return null;
 
   for (const adapter of BUILTIN_TRANSLATION_API_ADAPTERS) {
@@ -1189,7 +1194,11 @@ function normalizeProfile(profile) {
 
 async function tryProfiles(config, task) {
   const errors = [];
-  for (const profile of getProfilesByPriority(config)) {
+  const profiles = getProfilesByPriority(config);
+  if (!profiles.length) {
+    throw new Error("没有启用的大模型配置。请在配置页启用内置翻译，或至少启用一个大模型配置。");
+  }
+  for (const profile of profiles) {
     try {
       return await task(profile);
     } catch (error) {

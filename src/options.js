@@ -37,6 +37,7 @@ const DEFAULT_CONFIG = {
     inputTriggerSpaces: 3,
     bilingualLayout: "vertical",
     requestLogging: false,
+    builtinApiEnabled: true,
     popupLanguage: "all",
     translationMode: "auto-zh-en",
     sourceLanguage: "自动检测",
@@ -283,6 +284,7 @@ const GLOBAL_SETTING_FIELDS = new Set([
   "targetLanguage",
   "inputTranslate",
   "requestLogging",
+  "builtinApiEnabled",
   "inputTriggerSpaces"
 ]);
 
@@ -693,6 +695,11 @@ async function load() {
 
 async function save() {
   settings = readSettingsFromForm();
+  const validationError = validateSettingsBeforeSave(settings, profiles);
+  if (validationError) {
+    setStatus(validationError, true);
+    return false;
+  }
   if (!extensionApiAvailable) {
     setStatus("当前页面没有扩展权限，无法保存配置。请从插件图标或扩展详情页打开配置。", true);
     return false;
@@ -705,6 +712,23 @@ async function save() {
   });
   render();
   return true;
+}
+
+function validateSettingsBeforeSave(nextSettings, nextProfiles) {
+  if (nextSettings.builtinApiEnabled !== false) return "";
+  const enabledProfiles = nextProfiles.map(normalizeProfile).filter((profile) => profile.enabled);
+  if (!enabledProfiles.length) {
+    return "关闭内置翻译后，必须至少启用一个大模型配置。";
+  }
+  const invalidProfile = enabledProfiles.find((profile) =>
+    !String(profile.baseUrl || "").trim() ||
+    !String(profile.endpointPath || "").trim() ||
+    !String(profile.model || "").trim()
+  );
+  if (invalidProfile) {
+    return "关闭内置翻译后，启用的大模型配置必须填写接口地址、接口路径和模型名称。";
+  }
+  return "";
 }
 
 function buildExportConfig() {
@@ -790,6 +814,9 @@ function normalizeSettings(value) {
     requestLogging: typeof source.requestLogging === "boolean"
       ? source.requestLogging
       : DEFAULT_CONFIG.settings.requestLogging,
+    builtinApiEnabled: typeof source.builtinApiEnabled === "boolean"
+      ? source.builtinApiEnabled
+      : DEFAULT_CONFIG.settings.builtinApiEnabled,
     popupLanguage: normalizePopupLanguage(source.popupLanguage || DEFAULT_CONFIG.settings.popupLanguage),
     translationMode: ["auto-zh-en", "manual"].includes(source.translationMode)
       ? source.translationMode
@@ -1085,6 +1112,7 @@ function readSettingsFromForm() {
     targetLanguage: form.elements.targetLanguage.value.trim() || DEFAULT_CONFIG.settings.targetLanguage,
     inputTranslate: form.elements.inputTranslate.value === "true",
     requestLogging: form.elements.requestLogging.value === "true",
+    builtinApiEnabled: form.elements.builtinApiEnabled.value !== "false",
     inputTriggerSpaces: clampNumber(
       Number(form.elements.inputTriggerSpaces.value || DEFAULT_CONFIG.settings.inputTriggerSpaces),
       2,
