@@ -54,6 +54,14 @@ const BUILTIN_WORD_API_ADAPTERS = [
   }
 ];
 
+const BUILTIN_TRANSLATION_API_ADAPTERS = [
+  {
+    id: "youdao-mobile-translate",
+    name: "有道移动翻译",
+    query: queryYoudaoMobileTranslation
+  }
+];
+
 const browserApi = globalThis.litBrowser;
 
 browserApi.raw.runtime.onInstalled.addListener(() => {
@@ -250,6 +258,11 @@ async function translate(payload) {
     throw new Error("没有可翻译的文本");
   }
 
+  const adapterResult = await queryTranslationAdapters(text, mode, config.settings);
+  if (adapterResult) {
+    return adapterResult;
+  }
+
   return tryProfiles(config, async (profile) => {
     const targetLanguage = resolveTargetLanguage(text, config.settings);
     const requestContext = {
@@ -400,6 +413,145 @@ async function speakText(payload) {
       finish(reject, error);
     }
   });
+}
+
+async function queryTranslationAdapters(text, mode, settings) {
+  if (!shouldUseBuiltinTranslationAdapter(text, mode)) return null;
+
+  for (const adapter of BUILTIN_TRANSLATION_API_ADAPTERS) {
+    try {
+      const result = await adapter.query(text, mode, settings);
+      if (hasTranslationContent(result)) {
+        return withTranslationAdapterMeta(result, adapter);
+      }
+    } catch (error) {
+      console.warn(`${adapter.name || adapter.id} 翻译失败，回退到大模型:`, normalizeError(error));
+    }
+  }
+  return null;
+}
+
+function shouldUseBuiltinTranslationAdapter(text, mode) {
+  if (!["selection", "sentence", "paragraph", "input"].includes(mode)) return false;
+  const value = String(text || "").trim();
+  return value.length > 1 && value.length <= 5000;
+}
+
+function hasTranslationContent(result) {
+  return Boolean(String(result?.translation || "").trim());
+}
+
+function withTranslationAdapterMeta(result, adapter) {
+  return {
+    ...result,
+    alignments: [],
+    provider: adapter.id,
+    profileName: adapter.name || adapter.id,
+    model: adapter.id
+  };
+}
+
+async function queryYoudaoMobileTranslation(text, mode, settings) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  const direction = resolveYoudaoTranslateType(text, settings);
+  const body = new URLSearchParams({
+    inputtext: text,
+    type: direction
+  });
+
+  try {
+    const response = await fetch("https://mobile.youdao.com/translate", {
+      method: "POST",
+      signal: controller.signal,
+      body,
+      referrer: "https://mobile.youdao.com/translate",
+      headers: {
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Content-Type": "application/x-www-form-urlencoded",
+        Origin: "https://mobile.youdao.com",
+        Pragma: "no-cache",
+        "Cache-Control": "no-cache"
+      }
+    });
+    const html = await response.text();
+    if (!response.ok) {
+      throw new Error(`有道翻译请求失败 (${response.status}): ${response.statusText}`);
+    }
+
+    const translation = parseYoudaoMobileTranslation(html);
+    if (!translation) return null;
+    return {
+      source: text,
+      translation,
+      alignments: [],
+      mode,
+      targetLanguage: resolveYoudaoTranslationTargetLanguage(direction, text, settings)
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function resolveYoudaoTranslateType(text, settings) {
+  const translationSettings = getTranslationSettings(settings);
+  if (translationSettings.translationMode !== "manual") return "AUTO";
+
+  const source = normalizeLanguageLabel(translationSettings.sourceLanguage);
+  const target = normalizeLanguageLabel(translationSettings.targetLanguage);
+  if (source === "zh" && target === "en") return "ZH_CN2EN";
+  if (source === "en" && target === "zh") return "EN2ZH_CN";
+  if (source === "zh" && target === "ja") return "ZH_CN2JA";
+  if (source === "ja" && target === "zh") return "JA2ZH_CN";
+  if (source === "zh" && target === "ko") return "ZH_CN2KR";
+  if (source === "ko" && target === "zh") return "KR2ZH_CN";
+  if (source === "zh" && target === "fr") return "ZH_CN2FR";
+  if (source === "fr" && target === "zh") return "FR2ZH_CN";
+  if (source === "zh" && target === "ru") return "ZH_CN2RU";
+  if (source === "ru" && target === "zh") return "RU2ZH_CN";
+  if (source === "zh" && target === "es") return "ZH_CN2SP";
+  if (source === "es" && target === "zh") return "SP2ZH_CN";
+  return "AUTO";
+}
+
+function resolveYoudaoTranslationTargetLanguage(direction, text, settings) {
+  if (direction === "AUTO") return resolveTargetLanguage(text, settings);
+  if (/2ZH_CN$/.test(direction)) return "简体中文";
+  if (/2EN$/.test(direction)) return "English";
+  if (/2JA$/.test(direction)) return "日本語";
+  if (/2KR$/.test(direction)) return "한국어";
+  if (/2FR$/.test(direction)) return "Français";
+  if (/2RU$/.test(direction)) return "Русский";
+  if (/2SP$/.test(direction)) return "Español";
+  return resolveTargetLanguage(text, settings);
+}
+
+function parseYoudaoMobileTranslation(html) {
+  const section = extractHtmlSection(String(html || ""), /<ul\s+id=["']translateResult["'][^>]*>/i, /<\/ul>/i);
+  if (!section) return "";
+
+  const lines = [];
+  const itemPattern = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+  let match;
+  while ((match = itemPattern.exec(section))) {
+    const line = cleanHtmlText(match[1]);
+    if (line) lines.push(line);
+  }
+  return lines.join("\n").trim();
+}
+
+function normalizeLanguageLabel(value) {
+  const label = String(value || "").trim().toLowerCase();
+  if (["自动检测", "auto"].includes(label)) return "auto";
+  if (["zh", "zh-cn", "cn", "chinese", "中文", "简体中文"].includes(label)) return "zh";
+  if (["en", "eng", "english", "英文"].includes(label)) return "en";
+  if (["ja", "jp", "japanese", "日本語", "日文"].includes(label)) return "ja";
+  if (["ko", "kr", "korean", "한국어", "韩文"].includes(label)) return "ko";
+  if (["fr", "french", "français", "法文", "法语"].includes(label)) return "fr";
+  if (["ru", "russian", "русский", "俄文", "俄语"].includes(label)) return "ru";
+  if (["es", "sp", "spanish", "español", "西文", "西语", "西班牙语"].includes(label)) return "es";
+  return label || "auto";
 }
 
 async function fetchSpeechAudio(payload) {
