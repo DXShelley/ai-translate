@@ -46,7 +46,7 @@ Pop-Location
 
 ## 项目功能说明页与 Pages 部署
 
-项目功能说明页静态文件位于 `website/`，通过 `.github/workflows/pages.yml` 发布到 GitHub Pages。页面覆盖浏览器扩展、VS Code 插件、安装与项目支持；支持区使用 `#support` 锚点。向 `main` 推送页面或工作流变更会自动部署；也可在 GitHub Actions 中手动运行 `Deploy Project Pages`。
+项目功能说明页静态文件位于 `website/`，通过 `.github/workflows/pages.yml` 发布到 GitHub Pages。页面覆盖浏览器扩展、VS Code 插件、安装与项目支持；支持区使用 `#support` 锚点。右上角可切换中文和英文；浏览器允许本地存储时会记住语言选择。向 `main` 推送页面或工作流变更会自动部署；也可在 GitHub Actions 中手动运行 `Deploy Project Pages`。
 
 部署完成后的地址为：`https://dxshelley.github.io/ai-translate/`，项目支持入口为：`https://dxshelley.github.io/ai-translate/#support`。独立支持服务仅作为备用入口。
 

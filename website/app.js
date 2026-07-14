@@ -12,7 +12,6 @@
       heroTitle: "在网页与编辑器中，直接理解原文。",
       heroLead: "AI Translate 同时提供浏览器扩展和 VS Code 插件：前者处理网页划词，后者帮助中文用户阅读英文 Skill 文档。",
       releaseLabel: "当前发布版本",
-      modeMarkLabel: "两个插件入口",
       overviewLabel: "两种使用场景",
       browserTitle: "浏览器扩展",
       browserSummary: "为网页阅读提供划词、句子和段落翻译。支持本地或 OpenAI 兼容模型、多模型优先级回退，以及中英自动方向判断。",
@@ -34,7 +33,9 @@
       installTitle: "从同一个 Release 获取全部交付物",
       installBrowserTitle: "浏览器",
       installBrowserText: "下载 Chrome、Edge 或 Firefox 对应 zip，解压后在浏览器扩展管理页加载。",
-      installVscodeText: "下载 .vsix，在 Extensions 菜单中选择 Install from VSIX...。",
+      installVscodeBefore: "下载 ",
+      installVscodeMiddle: "，在 Extensions 菜单中选择 ",
+      installVscodeAfter: "。",
       latestRelease: "打开最新发布",
       supportLabel: "项目支持",
       supportTitle: "遇到问题时，从可复现的信息开始。",
@@ -57,7 +58,6 @@
       heroTitle: "Understand source text directly, on the web and in your editor.",
       heroLead: "AI Translate offers both a browser extension and a VS Code extension: translate selected web content, or look up words while reading English Skill documentation.",
       releaseLabel: "Current release",
-      modeMarkLabel: "Two extension entry points",
       overviewLabel: "Two ways to use it",
       browserTitle: "Browser extension",
       browserSummary: "Translate selections, sentences, and paragraphs while reading online. Supports local and OpenAI-compatible models, model-priority fallback, and automatic Chinese-English direction detection.",
@@ -79,7 +79,9 @@
       installTitle: "Get every deliverable from one Release",
       installBrowserTitle: "Browser",
       installBrowserText: "Download the Chrome, Edge, or Firefox zip, extract it, then load it from the browser extension manager.",
-      installVscodeText: "Download the .vsix, then choose Install from VSIX... from the Extensions menu.",
+      installVscodeBefore: "Download the ",
+      installVscodeMiddle: ", then choose ",
+      installVscodeAfter: " from the Extensions menu.",
       latestRelease: "Open latest release",
       supportLabel: "Project support",
       supportTitle: "Start with information that makes the issue reproducible.",
@@ -96,6 +98,22 @@
 
   const storageKey = "ai-translate-pages-language";
   const toggle = document.querySelector(".language-toggle");
+
+  function getSavedLanguage() {
+    try {
+      return window.localStorage.getItem(storageKey);
+    } catch {
+      return null;
+    }
+  }
+
+  function saveLanguage(language) {
+    try {
+      window.localStorage.setItem(storageKey, language);
+    } catch {
+      // Language switching remains available when browser storage is disabled.
+    }
+  }
 
   function applyLanguage(language) {
     const dictionary = translations[language];
@@ -115,10 +133,10 @@
       if (value) element.setAttribute("aria-label", value);
     });
     toggle?.setAttribute("aria-pressed", String(language === "en"));
-    localStorage.setItem(storageKey, language);
+    saveLanguage(language);
   }
 
-  const savedLanguage = localStorage.getItem(storageKey);
+  const savedLanguage = getSavedLanguage();
   applyLanguage(savedLanguage === "en" ? "en" : "zh");
   toggle?.addEventListener("click", () => applyLanguage(document.documentElement.lang === "en" ? "zh" : "en"));
 })();
