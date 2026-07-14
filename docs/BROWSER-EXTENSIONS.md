@@ -29,7 +29,20 @@ npm run build
 python -c "import zipfile,json; files=['AI-Translate-chrome.zip','AI-Translate-edge.zip','AI-Translate-firefox.zip']; [print(f, json.loads(zipfile.ZipFile(f).read('manifest.json'))['version'], 'importScripts' in zipfile.ZipFile(f).read('background.js').decode('utf-8')) for f in files]"
 ```
 
-期望输出中版本为 `3.0.0`，且 `importScripts` 为 `False`。
+期望输出中版本为 `5.0.0`，且 `importScripts` 为 `False`。
+
+## VS Code 扩展构建
+
+每次发布浏览器扩展时，必须同时构建 VS Code 扩展：
+
+```powershell
+Push-Location vscode-extension
+npm run check
+npm run package
+Pop-Location
+```
+
+期望生成：`dist/ai-translate-hover-5.0.0.vsix`。发布前使用 VS Code 的 `Install from VSIX...` 验证安装，并检查选词悬停、用户自定义快捷键、词典发音和模型回退。
 
 ## 安装步骤
 

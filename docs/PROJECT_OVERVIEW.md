@@ -4,13 +4,15 @@
 
 ### 发布与版本
 
-- 当前发布版本为 `v3.0.0`。
+- 当前发布版本为 `v5.0.0`。
 - 发布包：
   - `AI-Translate-chrome.zip`
   - `AI-Translate-edge.zip`
   - `AI-Translate-firefox.zip`
+- VS Code 发布包：`dist/ai-translate-hover-5.0.0.vsix`。
 - 构建入口：`npm run build`，实际执行 `scripts/build.js`。
 - 构建脚本会生成 `packages/chrome`、`packages/edge`、`packages/firefox`，并刷新对应 zip。
+- 每次发布还必须进入 `vscode-extension/` 执行 `npm run check` 和 `npm run package`。
 - Firefox MV2 zip 必须保证 `manifest.json` 在 zip 内排第一；`install.rdf` 不进入 zip。
 
 ### 已解决的关键问题
