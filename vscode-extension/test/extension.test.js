@@ -109,6 +109,42 @@ async function verifyRequestTimeout() {
   }
 }
 
-Promise.all([verifyOpenAiCompatibleRequest(), verifyRequestTimeout()]).catch((error) => {
+async function verifyRequestCancellation() {
+  const server = http.createServer(() => {});
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  let cancel;
+  const token = {
+    isCancellationRequested: false,
+    onCancellationRequested(listener) {
+      cancel = () => {
+        token.isCancellationRequested = true;
+        listener();
+      };
+      return { dispose() {} };
+    }
+  };
+  try {
+    const request = extension.fetchWithTimeout(`http://127.0.0.1:${server.address().port}`, {}, 1000, token);
+    cancel();
+    await assert.rejects(request, /Request cancelled\./);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+}
+
+function verifyCacheEviction() {
+  const cache = new Map();
+  extension.writeCache(cache, "first", "one", 2, 100, 0);
+  extension.writeCache(cache, "second", "two", 2, 100, 0);
+  assert.equal(extension.readCache(cache, "first", 1), "one");
+  extension.writeCache(cache, "third", "three", 2, 100, 1);
+  assert.equal(extension.readCache(cache, "second", 1), undefined);
+  assert.equal(extension.readCache(cache, "first", 1), "one");
+  assert.equal(extension.readCache(cache, "third", 1), "three");
+  assert.equal(extension.readCache(cache, "first", 101), undefined);
+}
+
+verifyCacheEviction();
+Promise.all([verifyOpenAiCompatibleRequest(), verifyRequestTimeout(), verifyRequestCancellation()]).catch((error) => {
   process.nextTick(() => { throw error; });
 });

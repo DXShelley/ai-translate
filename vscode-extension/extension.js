@@ -9,6 +9,10 @@ const pendingTranslations = new Map();
 const wordInfoCache = new Map();
 const pendingWordInfo = new Map();
 const PRONUNCIATION_DOMAIN = "https://dict.youdao.com";
+const TRANSLATION_CACHE_LIMIT = 500;
+const WORD_INFO_CACHE_LIMIT = 1000;
+const TRANSLATION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const WORD_INFO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 let pronunciationPanel;
 let keyboardHoverRequestExpiresAt = 0;
 
@@ -78,7 +82,7 @@ async function provideDelayedHover(document, range, text, token) {
   markdown.isTrusted = { enabledCommands: ["aiTranslateHover.playPronunciation"] };
   markdown.appendMarkdown(`**${escapeMarkdown(text)}**\n\n`);
   try {
-    const wordInfo = ENGLISH_WORD_PATTERN.test(text) ? await getWordInfo(text).catch(() => null) : null;
+    const wordInfo = ENGLISH_WORD_PATTERN.test(text) ? await getWordInfo(text, token).catch(() => null) : null;
     const translation = wordInfo ? "" : await translate(text, token);
     if (token.isCancellationRequested || !selectionStillMatches(document, range, text)) return undefined;
     appendDictionaryMarkdown(markdown, wordInfo, translation);
@@ -228,71 +232,78 @@ function delay(milliseconds, token) {
 async function translate(text, token) {
   const config = getConfig();
   const cacheKey = JSON.stringify([text.toLowerCase(), config.builtinApiEnabled, config.baseUrl, config.endpointPath, config.model, config.targetLanguage]);
-  if (translationCache.has(cacheKey)) return translationCache.get(cacheKey);
+  const cached = readCache(translationCache, cacheKey);
+  if (cached !== undefined) return cached;
   if (!pendingTranslations.has(cacheKey)) {
-    pendingTranslations.set(cacheKey, requestWithFallback(text, config));
+    pendingTranslations.set(cacheKey, requestWithFallback(text, config, token));
   }
   try {
     const result = await pendingTranslations.get(cacheKey);
-    translationCache.set(cacheKey, result);
+    writeCache(translationCache, cacheKey, result, TRANSLATION_CACHE_LIMIT, TRANSLATION_CACHE_TTL_MS);
     return result;
   } finally {
     pendingTranslations.delete(cacheKey);
   }
 }
 
-async function requestWithFallback(text, config) {
+async function requestWithFallback(text, config, token) {
   if (config.builtinApiEnabled) {
     try {
-      const builtinTranslation = await requestYoudaoTranslation(text, config);
+      const builtinTranslation = await requestYoudaoTranslation(text, config, token);
       if (builtinTranslation) return builtinTranslation;
-    } catch {
+    } catch (error) {
+      if (isCancellationError(error)) throw error;
       // The configured model remains the fallback when the built-in service is unavailable.
     }
   }
-  return requestTranslation(text, config);
+  return requestTranslation(text, config, token);
 }
 
-async function getWordInfo(word) {
+async function getWordInfo(word, token) {
   const key = word.toLowerCase();
-  if (wordInfoCache.has(key)) return wordInfoCache.get(key);
-  if (!pendingWordInfo.has(key)) pendingWordInfo.set(key, requestYoudaoWordInfo(word));
+  const cached = readCache(wordInfoCache, key);
+  if (cached !== undefined) return cached;
+  if (!pendingWordInfo.has(key)) pendingWordInfo.set(key, requestYoudaoWordInfo(word, token));
   try {
     const result = await pendingWordInfo.get(key);
-    if (result) wordInfoCache.set(key, result);
+    if (result) writeCache(wordInfoCache, key, result, WORD_INFO_CACHE_LIMIT, WORD_INFO_CACHE_TTL_MS);
     return result;
   } finally {
     pendingWordInfo.delete(key);
   }
 }
 
-async function requestYoudaoWordInfo(word) {
+async function requestYoudaoWordInfo(word, token) {
   const url = `https://mobile.youdao.com/dict?le=eng&q=${encodeURIComponent(word)}`;
   const [response, englishDefinitions] = await Promise.all([
     fetchWithTimeout(url, {
         method: "GET",
         headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8" }
-      }, 6000),
-    fetchYoudaoEnglishDefinitions(word).catch(() => [])
+      }, 6000, token),
+    fetchYoudaoEnglishDefinitions(word, token).catch((error) => {
+      if (isCancellationError(error)) throw error;
+      return [];
+    })
   ]);
   if (!response.ok) throw new Error(`Youdao dictionary HTTP ${response.status}`);
   const info = parseYoudaoWordInfo(await response.text(), word);
   return info ? { ...info, definitionsEn: englishDefinitions } : null;
 }
 
-async function fetchYoudaoEnglishDefinitions(word) {
+async function fetchYoudaoEnglishDefinitions(word, token) {
   const response = await fetchWithTimeout(
     `https://mobile.youdao.com/singledict?q=${encodeURIComponent(word)}&dict=ee&le=eng&more=false`,
     {
       headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8" }
     },
-    6000
+    6000,
+    token
   );
   if (!response.ok) return [];
   return parseYoudaoEnglishDefinitions(await response.text());
 }
 
-async function requestYoudaoTranslation(text, config) {
+async function requestYoudaoTranslation(text, config, token) {
   const response = await fetchWithTimeout("https://mobile.youdao.com/translate", {
       method: "POST",
       headers: {
@@ -304,12 +315,12 @@ async function requestYoudaoTranslation(text, config) {
         "Cache-Control": "no-cache"
       },
       body: new URLSearchParams({ inputtext: text, type: "AUTO" })
-    }, 8000);
+    }, 8000, token);
   if (!response.ok) throw new Error(`Youdao HTTP ${response.status}`);
   return parseYoudaoMobileTranslation(await response.text());
 }
 
-async function requestTranslation(text, config) {
+async function requestTranslation(text, config, token) {
   const targetLanguage = isMostlyChinese(text) ? "English" : config.targetLanguage;
   const url = joinUrl(config.baseUrl, config.endpointPath);
   try {
@@ -333,7 +344,7 @@ async function requestTranslation(text, config) {
           }
         ]
       })
-    }, config.timeoutMs);
+    }, config.timeoutMs, token);
     const bodyText = await response.text();
     let body;
     try { body = bodyText ? JSON.parse(bodyText) : {}; } catch { body = {}; }
@@ -351,17 +362,49 @@ async function requestTranslation(text, config) {
   }
 }
 
-async function fetchWithTimeout(url, options, timeoutMs) {
+async function fetchWithTimeout(url, options, timeoutMs, token) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  const cancellation = token?.onCancellationRequested?.(() => controller.abort());
   try {
+    if (token?.isCancellationRequested) throw new Error("Request cancelled.");
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (error) {
-    if (error?.name === "AbortError") throw new Error(`Request timed out after ${timeoutMs}ms`);
+    if (error?.name === "AbortError") {
+      if (token?.isCancellationRequested) throw new Error("Request cancelled.");
+      if (timedOut) throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
     throw error;
   } finally {
     clearTimeout(timer);
+    cancellation?.dispose();
   }
+}
+
+function readCache(cache, key, now = Date.now()) {
+  const entry = cache.get(key);
+  if (!entry) return undefined;
+  if (entry.expiresAt <= now) {
+    cache.delete(key);
+    return undefined;
+  }
+  cache.delete(key);
+  cache.set(key, entry);
+  return entry.value;
+}
+
+function writeCache(cache, key, value, limit, ttlMs, now = Date.now()) {
+  cache.delete(key);
+  while (cache.size >= limit) cache.delete(cache.keys().next().value);
+  cache.set(key, { value, expiresAt: now + ttlMs });
+}
+
+function isCancellationError(error) {
+  return formatError(error) === "Request cancelled.";
 }
 
 function getConfig() {
@@ -556,5 +599,7 @@ module.exports = {
   createPronunciationPlayerHtml,
   normalizeWordForMatch,
   normalizeTriggerMode,
-  fetchWithTimeout
+  fetchWithTimeout,
+  readCache,
+  writeCache
 };

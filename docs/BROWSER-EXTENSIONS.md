@@ -29,7 +29,7 @@ npm run build
 python -c "import zipfile,json; files=['AI-Translate-chrome.zip','AI-Translate-edge.zip','AI-Translate-firefox.zip']; [print(f, json.loads(zipfile.ZipFile(f).read('manifest.json'))['version'], 'importScripts' in zipfile.ZipFile(f).read('background.js').decode('utf-8')) for f in files]"
 ```
 
-期望输出中版本为 `5.0.0`，且 `importScripts` 为 `False`。
+期望输出中版本为 `5.0.1`，且 `importScripts` 为 `False`。
 
 ## VS Code 扩展构建
 
@@ -42,13 +42,13 @@ npm run package
 Pop-Location
 ```
 
-期望生成：`dist/ai-translate-hover-5.0.0.vsix`。发布前使用 VS Code 的 `Install from VSIX...` 验证安装，并检查选词悬停、用户自定义快捷键、词典发音和模型回退。
+期望生成：`dist/ai-translate-hover-5.0.1.vsix`。发布前使用 VS Code 的 `Install from VSIX...` 验证安装，并检查选词悬停、用户自定义快捷键、词典发音和模型回退。
 
-## 项目支持页与 Pages 部署
+## 项目功能说明页与 Pages 部署
 
-支持页静态文件位于 `website/`，通过 `.github/workflows/pages.yml` 发布到 GitHub Pages。向 `main` 推送支持页或工作流变更会自动部署；也可在 GitHub Actions 中手动运行 `Deploy Support Page`。
+项目功能说明页静态文件位于 `website/`，通过 `.github/workflows/pages.yml` 发布到 GitHub Pages。页面覆盖浏览器扩展、VS Code 插件、安装与项目支持；支持区使用 `#support` 锚点。向 `main` 推送页面或工作流变更会自动部署；也可在 GitHub Actions 中手动运行 `Deploy Project Pages`。
 
-部署完成后的地址为：`https://dxshelley.github.io/ai-translate/`。
+部署完成后的地址为：`https://dxshelley.github.io/ai-translate/`，项目支持入口为：`https://dxshelley.github.io/ai-translate/#support`。独立支持服务仅作为备用入口。
 
 ## 安装步骤
 

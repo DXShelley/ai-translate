@@ -4,10 +4,10 @@
 
 项目包含两类插件：浏览器扩展与 VS Code 扩展。浏览器扩展提供网页划词、句子和段落翻译；VS Code 扩展面向中文用户阅读英文 Skill 文档，提供选词悬停词典和翻译辅助。
 
-`v5.0.0` 发布产物：
+`v5.0.1` 发布产物：
 
 - 浏览器：`AI-Translate-chrome.zip`、`AI-Translate-edge.zip`、`AI-Translate-firefox.zip`
-- VS Code：[vscode-extension/](vscode-extension/README.md) 构建生成 `dist/ai-translate-hover-5.0.0.vsix`，可通过 `Install from VSIX...` 安装。
+- VS Code：[vscode-extension/](vscode-extension/README.md) 构建生成 `dist/ai-translate-hover-5.0.1.vsix`，可通过 `Install from VSIX...` 安装。
 
 VS Code 扩展最低兼容版本为 `1.85.0`，完整兼容性说明见 [`vscode-extension/README.md`](vscode-extension/README.md)。
 
@@ -15,9 +15,10 @@ VS Code 扩展主要面向中文用户阅读英文 Skill 文档的场景，提�
 
 ## 项目支持
 
-- 支持页：[GitHub Pages](https://dxshelley.github.io/ai-translate/)
+- 项目功能说明与支持：[GitHub Pages](https://dxshelley.github.io/ai-translate/#support)
 - 问题反馈：[GitHub Issues](https://github.com/DXShelley/ai-translate/issues/new/choose)
 - 发布下载：[GitHub Releases](https://github.com/DXShelley/ai-translate/releases)
+- 备用支持入口：[项目支持服务](https://macosx.kooldns.cn/support/ai-translate/)
 - 页面会在 `main` 分支的 `website/` 或 Pages 工作流变更后自动部署。
 
 ## 功能
