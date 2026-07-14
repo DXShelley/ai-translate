@@ -8,3 +8,5 @@ dist/
 build/
 debug-test.html
 .claude/
+AI-Translate-chrome/
+AI-Translate-edge/

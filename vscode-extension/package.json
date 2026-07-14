@@ -1,0 +1,110 @@
+{
+  "name": "ai-translate-hover",
+  "displayName": "AI Translate Hover",
+  "description": "Translate a selected word after hovering it for one second.",
+  "version": "5.0.0",
+  "publisher": "DxShelley",
+  "license": "MIT",
+  "author": {
+    "name": "DxShelley"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DXShelley/ai-translate.git"
+  },
+  "homepage": "https://github.com/DXShelley/ai-translate#readme",
+  "bugs": {
+    "url": "https://macosx.kooldns.cn/support/?project=DxShelley.ai-translate-hover"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["translate", "translation", "hover", "dictionary", "youdao", "ai"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiTranslateHover.translateSelection",
+        "title": "AI Translate: Translate Selection",
+        "enablement": "aiTranslateHover.keyboardTriggerEnabled"
+      },
+      {
+        "command": "aiTranslateHover.openSettings",
+        "title": "AI Translate: Open Settings"
+      },
+      {
+        "command": "aiTranslateHover.playPronunciation",
+        "title": "AI Translate: Play Pronunciation"
+      }
+    ],
+    "configuration": {
+      "title": "AI Translate Hover",
+      "properties": {
+        "aiTranslateHover.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:1234/v1",
+          "description": "OpenAI-compatible API base URL."
+        },
+        "aiTranslateHover.endpointPath": {
+          "type": "string",
+          "default": "/chat/completions",
+          "description": "OpenAI-compatible chat endpoint path."
+        },
+        "aiTranslateHover.model": {
+          "type": "string",
+          "default": "local-model",
+          "description": "Model ID used for translation."
+        },
+        "aiTranslateHover.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Optional API key. Stored in VS Code settings; use a secure settings target when appropriate."
+        },
+        "aiTranslateHover.targetLanguage": {
+          "type": "string",
+          "default": "简体中文",
+          "description": "Target language for non-Chinese text. Chinese text is translated to English."
+        },
+        "aiTranslateHover.triggerMode": {
+          "type": "string",
+          "enum": ["hover", "keyboard", "hoverAndKeyboard"],
+          "enumDescriptions": [
+            "Translate when hovering over a selected word.",
+            "Translate the selected word with the keyboard shortcut only.",
+            "Enable both hover and keyboard shortcut triggers."
+          ],
+          "default": "hover",
+          "description": "How translation is triggered. Assign a shortcut for AI Translate: Translate Selection in Keyboard Shortcuts to use keyboard triggering."
+        },
+        "aiTranslateHover.builtinApiEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use the built-in Youdao mobile translation service before the configured OpenAI-compatible API."
+        },
+        "aiTranslateHover.trustPronunciationDomainOnActivate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Add dict.youdao.com to VS Code trusted domains when the extension activates, so pronunciation links do not require confirmation."
+        },
+        "aiTranslateHover.hoverDelayMs": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 1000,
+          "description": "Additional hover duration before a translation request starts, in milliseconds."
+        },
+        "aiTranslateHover.timeoutMs": {
+          "type": "number",
+          "default": 45000,
+          "minimum": 1000,
+          "description": "Translation request timeout, in milliseconds."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "node --check extension.js && node --test test/*.test.js",
+    "package": "npx @vscode/vsce package --out ../dist/ai-translate-hover-${npm_package_version}.vsix"
+  }
+}

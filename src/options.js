@@ -36,7 +36,12 @@ const DEFAULT_CONFIG = {
     inputTranslate: true,
     inputTriggerSpaces: 3,
     bilingualLayout: "vertical",
-    requestLogging: false
+    requestLogging: false,
+    builtinApiEnabled: true,
+    popupLanguage: "all",
+    translationMode: "auto-zh-en",
+    sourceLanguage: "自动检测",
+    targetLanguage: "简体中文"
   }
 };
 
@@ -49,9 +54,6 @@ const PROFILE_TEXT_FIELD_ORDER = [
   "apiKey",
   "model",
   "authType",
-  "translationMode",
-  "sourceLanguage",
-  "targetLanguage",
   "extraBody",
   "temperature",
   "timeoutMs",
@@ -265,12 +267,31 @@ const importConfigFile = document.querySelector("#importConfigFile");
 const requestLogList = document.querySelector("#requestLogList");
 const requestLogDetail = document.querySelector("#requestLogDetail");
 const profileText = document.querySelector("#profileText");
+const modelDetail = document.querySelector("#modelDetail");
+const globalSettingsDetail = document.querySelector("#globalSettingsDetail");
+const globalSettingsNav = document.querySelector("#globalSettingsNav");
+const testButton = document.querySelector("#test");
 const browserApi = globalThis.litBrowser;
 const extensionApiAvailable = Boolean(browserApi?.runtime?.id && browserApi?.storage?.sync);
+const GLOBAL_SETTING_FIELDS = new Set([
+  "displayMode",
+  "bilingualLayout",
+  "hoverTranslate",
+  "hoverModifier",
+  "popupLanguage",
+  "translationMode",
+  "sourceLanguage",
+  "targetLanguage",
+  "inputTranslate",
+  "requestLogging",
+  "builtinApiEnabled",
+  "inputTriggerSpaces"
+]);
 
 let profiles = [];
 let activeProfileId = DEFAULT_PROFILE.id;
 let selectedProfileId = DEFAULT_PROFILE.id;
+let activeDetailView = "profile";
 let settings = { ...DEFAULT_CONFIG.settings };
 let fetchedModels = [];
 let renderingProfile = false;
@@ -299,7 +320,6 @@ if (form) {
   });
 }
 
-const testButton = document.querySelector("#test");
 if (testButton) {
   testButton.addEventListener("click", async () => {
     // 保存当前表单数据，但不立即保存到存储
@@ -315,9 +335,6 @@ if (testButton) {
       apiKey: form.elements.apiKey.value.trim(),
       model: availableModelsSelect.value || getSelectedProfile().model || DEFAULT_PROFILE.model,
       authType: form.elements.authType.value || DEFAULT_PROFILE.authType,
-      translationMode: form.elements.translationMode.value || DEFAULT_PROFILE.translationMode,
-      sourceLanguage: form.elements.sourceLanguage.value.trim() || DEFAULT_PROFILE.sourceLanguage,
-      targetLanguage: form.elements.targetLanguage.value.trim() || DEFAULT_PROFILE.targetLanguage,
       temperature: Number(form.elements.temperature.value || DEFAULT_PROFILE.temperature),
       timeoutMs: Number(form.elements.timeoutMs.value || DEFAULT_PROFILE.timeoutMs),
       priority: clampPriority(getRadioValue("priority") || DEFAULT_PROFILE.priority),
@@ -501,7 +518,7 @@ if (importConfigFile) {
 
 const addProfileButton = document.querySelector("#addProfile");
 if (addProfileButton) {
-  addProfileButton.addEventListener("click", () => {
+  addProfileButton.addEventListener("click", async () => {
     persistCurrentForm();
     const model = DEFAULT_PROFILE.model;
     const profile = {
@@ -513,14 +530,16 @@ if (addProfileButton) {
     };
     profiles.push(profile);
     selectedProfileId = profile.id;
+    activeDetailView = "profile";
+    await saveProfiles();
     render();
-    setStatus(`已新增配置，保存后生效。${getSpeechCapabilityMessage()}`);
+    setStatus("已新增配置");
   });
 }
 
 const duplicateProfileButton = document.querySelector("#duplicateProfile");
 if (duplicateProfileButton) {
-  duplicateProfileButton.addEventListener("click", () => {
+  duplicateProfileButton.addEventListener("click", async () => {
     persistCurrentForm();
     const current = getSelectedProfile();
     const profile = {
@@ -531,14 +550,16 @@ if (duplicateProfileButton) {
     };
     profiles.push(profile);
     selectedProfileId = profile.id;
+    activeDetailView = "profile";
+    await saveProfiles();
     render();
-    setStatus("已复制当前配置，保存后生效");
+    setStatus("已复制当前配置");
   });
 }
 
 const deleteProfileButton = document.querySelector("#deleteProfile");
 if (deleteProfileButton) {
-  deleteProfileButton.addEventListener("click", () => {
+  deleteProfileButton.addEventListener("click", async () => {
     if (profiles.length <= 1) {
       setStatus("至少保留一个模型配置", true);
       return;
@@ -550,31 +571,36 @@ if (deleteProfileButton) {
     if (activeProfileId && !profiles.some((profile) => profile.id === activeProfileId)) {
       activeProfileId = selectedProfileId;
     }
+    activeDetailView = "profile";
+    await saveProfiles();
     render();
-    setStatus("已删除配置，保存后生效");
+    setStatus("已删除配置");
   });
 }
 
 if (profileList) {
   profileList.addEventListener("click", (event) => {
-    console.log('Profile list click event', event.target);
-
     // 如果点击的是复选框或其标签，不执行选择逻辑
     if (event.target.closest(".profile-enable-checkbox")) {
-      console.log('Checkbox clicked, ignoring');
       return;
     }
 
     const item = event.target.closest("[data-profile-id]");
     if (!item) {
-      console.log('No profile item clicked');
       return;
     }
 
-    console.log('Selecting profile:', item.dataset.profileId);
     persistCurrentForm();
     selectedProfileId = item.dataset.profileId;
-    console.log('After select, selectedProfileId:', selectedProfileId);
+    activeDetailView = "profile";
+    render();
+  });
+}
+
+if (globalSettingsNav) {
+  globalSettingsNav.addEventListener("click", () => {
+    persistCurrentForm();
+    activeDetailView = "settings";
     render();
   });
 }
@@ -658,7 +684,7 @@ async function load() {
 
   const saved = await browserApi.storage.sync.get(null);
   profiles = normalizeProfiles(saved);
-  settings = { ...DEFAULT_CONFIG.settings, ...(saved.settings || {}) };
+  settings = normalizeSettings({ ...(profiles[0] || {}), ...(saved.settings || {}) });
   activeProfileId = profiles.some((profile) => profile.id === saved.activeProfileId)
     ? saved.activeProfileId
     : profiles[0].id;
@@ -669,6 +695,11 @@ async function load() {
 
 async function save() {
   settings = readSettingsFromForm();
+  const validationError = validateSettingsBeforeSave(settings, profiles);
+  if (validationError) {
+    setStatus(validationError, true);
+    return false;
+  }
   if (!extensionApiAvailable) {
     setStatus("当前页面没有扩展权限，无法保存配置。请从插件图标或扩展详情页打开配置。", true);
     return false;
@@ -681,6 +712,23 @@ async function save() {
   });
   render();
   return true;
+}
+
+function validateSettingsBeforeSave(nextSettings, nextProfiles) {
+  if (nextSettings.builtinApiEnabled !== false) return "";
+  const enabledProfiles = nextProfiles.map(normalizeProfile).filter((profile) => profile.enabled);
+  if (!enabledProfiles.length) {
+    return "关闭内置翻译后，必须至少启用一个大模型配置。";
+  }
+  const invalidProfile = enabledProfiles.find((profile) =>
+    !String(profile.baseUrl || "").trim() ||
+    !String(profile.endpointPath || "").trim() ||
+    !String(profile.model || "").trim()
+  );
+  if (invalidProfile) {
+    return "关闭内置翻译后，启用的大模型配置必须填写接口地址、接口路径和模型名称。";
+  }
+  return "";
 }
 
 function buildExportConfig() {
@@ -741,7 +789,7 @@ function normalizeImportedConfig(value) {
   return {
     activeProfileId: importedActiveId,
     profiles: importedProfiles,
-    settings: normalizeSettings(source?.settings)
+    settings: normalizeSettings({ ...(importedProfiles[0] || {}), ...(source?.settings || {}) })
   };
 }
 
@@ -766,6 +814,15 @@ function normalizeSettings(value) {
     requestLogging: typeof source.requestLogging === "boolean"
       ? source.requestLogging
       : DEFAULT_CONFIG.settings.requestLogging,
+    builtinApiEnabled: typeof source.builtinApiEnabled === "boolean"
+      ? source.builtinApiEnabled
+      : DEFAULT_CONFIG.settings.builtinApiEnabled,
+    popupLanguage: normalizePopupLanguage(source.popupLanguage || DEFAULT_CONFIG.settings.popupLanguage),
+    translationMode: ["auto-zh-en", "manual"].includes(source.translationMode)
+      ? source.translationMode
+      : DEFAULT_CONFIG.settings.translationMode,
+    sourceLanguage: String(source.sourceLanguage || DEFAULT_CONFIG.settings.sourceLanguage).trim() || DEFAULT_CONFIG.settings.sourceLanguage,
+    targetLanguage: String(source.targetLanguage || DEFAULT_CONFIG.settings.targetLanguage).trim() || DEFAULT_CONFIG.settings.targetLanguage,
     inputTriggerSpaces: clampNumber(
       Number(source.inputTriggerSpaces || DEFAULT_CONFIG.settings.inputTriggerSpaces),
       2,
@@ -791,7 +848,19 @@ function render() {
   renderProfileList();
   fillForm(getSelectedProfile());
   fillSettings(settings);
+  renderDetailView();
   document.querySelector("#deleteProfile").disabled = profiles.length <= 1;
+}
+
+function renderDetailView() {
+  const isSettingsView = activeDetailView === "settings";
+  if (modelDetail) modelDetail.hidden = isSettingsView;
+  if (globalSettingsDetail) globalSettingsDetail.hidden = !isSettingsView;
+  if (globalSettingsNav) {
+    globalSettingsNav.classList.toggle("active", isSettingsView);
+    globalSettingsNav.setAttribute("aria-current", isSettingsView ? "page" : "false");
+  }
+  if (testButton) testButton.hidden = isSettingsView;
 }
 
 async function getRequestLogs() {
@@ -816,7 +885,8 @@ async function renderRequestLogs() {
     return;
   }
 
-  requestLogList.innerHTML = logs.map((log) => `
+  const visibleLogs = logs.slice(0, 10);
+  requestLogList.innerHTML = visibleLogs.map((log) => `
     <button type="button" class="request-log-item${log.id === selectedRequestLogId ? " active" : ""}" data-request-log-id="${escapeHtml(log.id || "")}">
       <span>
         <span class="log-main">
@@ -829,7 +899,7 @@ async function renderRequestLogs() {
     </button>
   `).join("");
 
-  const selectedLog = logs.find((log) => log.id === selectedRequestLogId);
+  const selectedLog = visibleLogs.find((log) => log.id === selectedRequestLogId);
   if (selectedLog) {
     renderRequestLogDetail(selectedLog);
   } else {
@@ -946,10 +1016,10 @@ function renderProfileList() {
 
   for (const profile of profiles) {
     const item = document.createElement("div");
-    item.className = `profile-item${profile.id === selectedProfileId ? " active" : ""}`;
+    item.className = `profile-item${activeDetailView === "profile" && profile.id === selectedProfileId ? " active" : ""}`;
     item.dataset.profileId = profile.id;
     item.setAttribute("role", "option");
-    item.setAttribute("aria-selected", String(profile.id === selectedProfileId));
+    item.setAttribute("aria-selected", String(activeDetailView === "profile" && profile.id === selectedProfileId));
     item.innerHTML = `
       <span class="profile-topline">
         <input type="checkbox" class="profile-enable-checkbox" data-profile-id="${profile.id}" ${profile.enabled ? "checked" : ""}>
@@ -1007,6 +1077,7 @@ function fillForm(profile) {
   for (const [key, value] of Object.entries(profile)) {
     const field = form.elements[key];
     if (!field) continue;
+    if (GLOBAL_SETTING_FIELDS.has(key)) continue;
     if (key === "priority") {
       setRadioValue("priority", String(clampPriority(value)));
     } else if (key !== "model") {
@@ -1035,8 +1106,13 @@ function readSettingsFromForm() {
     bilingualLayout: form.elements.bilingualLayout.value || DEFAULT_CONFIG.settings.bilingualLayout,
     hoverTranslate: form.elements.hoverTranslate.value === "true",
     hoverModifier: form.elements.hoverModifier.value || DEFAULT_CONFIG.settings.hoverModifier,
+    popupLanguage: normalizePopupLanguage(form.elements.popupLanguage.value || DEFAULT_CONFIG.settings.popupLanguage),
+    translationMode: form.elements.translationMode.value || DEFAULT_CONFIG.settings.translationMode,
+    sourceLanguage: form.elements.sourceLanguage.value.trim() || DEFAULT_CONFIG.settings.sourceLanguage,
+    targetLanguage: form.elements.targetLanguage.value.trim() || DEFAULT_CONFIG.settings.targetLanguage,
     inputTranslate: form.elements.inputTranslate.value === "true",
     requestLogging: form.elements.requestLogging.value === "true",
+    builtinApiEnabled: form.elements.builtinApiEnabled.value !== "false",
     inputTriggerSpaces: clampNumber(
       Number(form.elements.inputTriggerSpaces.value || DEFAULT_CONFIG.settings.inputTriggerSpaces),
       2,
@@ -1046,9 +1122,7 @@ function readSettingsFromForm() {
 }
 
 function persistCurrentForm() {
-  console.log('persistCurrentForm called, selectedProfileId:', selectedProfileId);
   const index = profiles.findIndex((profile) => profile.id === selectedProfileId);
-  console.log('persistCurrentForm index:', index, 'profiles:', profiles);
   if (index === -1) return;
   settings = readSettingsFromForm();
   if (profileEditSource === "form") {
@@ -1060,21 +1134,21 @@ function persistCurrentForm() {
     ...oldProfile,
     ...getProfileFromForm()
   });
-  console.log('Updating profile from:', oldProfile, 'to:', newProfile);
   profiles[index] = newProfile;
 }
 
 function getProfileFromForm() {
-  console.log('getProfileFromForm called');
   const formProfile = getProfileFormValues();
   const textProfile = readProfileTextOverride();
+  for (const key of GLOBAL_SETTING_FIELDS) {
+    delete textProfile[key];
+  }
   const current = getSelectedProfile();
   const result = normalizeProfile({
     id: current.id, // 关键修复：保留原配置的唯一标识
     ...formProfile,
     ...textProfile
   });
-  console.log('getProfileFromForm result:', result);
   return result;
 }
 
@@ -1091,9 +1165,6 @@ function getProfileFormValues() {
     apiKey: form.elements.apiKey.value.trim(),
     model,
     authType: form.elements.authType.value || DEFAULT_PROFILE.authType,
-    translationMode: form.elements.translationMode.value || DEFAULT_PROFILE.translationMode,
-    sourceLanguage: form.elements.sourceLanguage.value.trim() || DEFAULT_PROFILE.sourceLanguage,
-    targetLanguage: form.elements.targetLanguage.value.trim() || DEFAULT_PROFILE.targetLanguage,
     temperature: Number(form.elements.temperature.value || DEFAULT_PROFILE.temperature),
     timeoutMs: Number(form.elements.timeoutMs.value || DEFAULT_PROFILE.timeoutMs),
     priority: clampPriority(getRadioValue("priority") || DEFAULT_PROFILE.priority),
@@ -1137,6 +1208,7 @@ function syncProfileTextFromForm() {
 
 function trackProfileEditSource(target) {
   if (renderingProfile) return;
+  if (GLOBAL_SETTING_FIELDS.has(target?.name)) return;
   if (target === profileText) {
     profileEditSource = "text";
     return;
@@ -1155,6 +1227,7 @@ function applyProfileTextToForm(showSuccess = true) {
     for (const [key, value] of Object.entries(parsed)) {
       const field = form.elements[key];
       if (!field) continue;
+      if (GLOBAL_SETTING_FIELDS.has(key)) continue;
       if (key === "priority") {
         setRadioValue("priority", String(clampPriority(value)));
       } else if (key !== "model") {
@@ -1179,6 +1252,7 @@ function profileTextSnapshot(profile) {
   }
   for (const [key, value] of Object.entries(normalized)) {
     if (key === "id" || key in snapshot) continue;
+    if (GLOBAL_SETTING_FIELDS.has(key)) continue;
     snapshot[key] = value;
   }
   return snapshot;
@@ -1257,6 +1331,16 @@ function normalizeObject(value, fallback = {}) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : fallback;
 }
 
+function normalizePopupLanguage(value) {
+  const code = String(value || "all").trim().toLowerCase();
+  if (["", "all", "auto", "*", "any"].includes(code)) return "all";
+  if (["en", "eng", "english"].includes(code)) return "en";
+  if (["zh", "zh-cn", "zh-tw", "cn", "chinese", "中文", "简体中文", "繁體中文"].includes(code)) return "zh";
+  if (["ja", "jp", "japanese", "日本語"].includes(code)) return "ja";
+  if (["ko", "kr", "korean", "한국어"].includes(code)) return "ko";
+  return "all";
+}
+
 function normalizePresetId(value) {
   const id = String(value || "").trim();
   return PRESETS.some((preset) => preset.id === id) ? id : "";
@@ -1301,7 +1385,6 @@ function normalizeEndpointForCompare(value) {
 
 function getSelectedProfile() {
   const found = profiles.find((profile) => profile.id === selectedProfileId) || profiles[0];
-  console.log('getSelectedProfile called, selectedProfileId:', selectedProfileId, 'found:', found);
   return found;
 }
 
