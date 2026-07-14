@@ -16,7 +16,7 @@
 
 ## 支持
 
-使用问题、功能建议和服务支持请访问 [项目支持页](https://macosx.kooldns.cn/support/?project=DxShelley.ai-translate-hover)。
+使用问题、功能建议和服务支持请访问 [项目支持页](https://dxshelley.github.io/ai-translate/)，也可通过 [GitHub Issues](https://github.com/DXShelley/ai-translate/issues/new/choose) 反馈。
 
 ## 兼容性
 

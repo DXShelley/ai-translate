@@ -472,6 +472,8 @@ docs/
 scripts/
 src/
 vscode-extension/
+website/
+.github/
 AI-Translate-chrome.zip
 AI-Translate-edge.zip
 AI-Translate-firefox.zip
@@ -511,7 +513,7 @@ powershell -ExecutionPolicy Bypass -File scripts\sync-dev-to-main.ps1 -Push
 1. 要求当前分支必须是 `dev`。
 2. 要求工作区必须干净。
 3. 切换到 `main`。
-4. 只从 `dev` 同步必要文件范围，包括浏览器 zip 和 VS Code 插件源码。
+4. 只从 `dev` 同步必要文件范围，包括浏览器 zip、VS Code 插件源码、支持页与 Pages 工作流。
 5. 如有变更，自动提交到 `main`。
 6. 返回 `dev`。
 7. 使用 `-Push` 时推送 `dev` 和 `main`。

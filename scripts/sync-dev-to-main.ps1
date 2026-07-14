@@ -15,6 +15,8 @@ $necessaryPaths = @(
   "scripts",
   "src",
   "vscode-extension",
+  "website",
+  ".github",
   "AI-Translate-chrome.zip",
   "AI-Translate-edge.zip",
   "AI-Translate-firefox.zip"
