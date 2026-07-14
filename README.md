@@ -13,14 +13,6 @@ VS Code 扩展最低兼容版本为 `1.85.0`，完整兼容性说明见 [`vscode
 
 VS Code 扩展主要面向中文用户阅读英文 Skill 文档的场景，提供选词悬停词典和翻译辅助。
 
-## 项目支持
-
-- 项目功能说明与支持：[GitHub Pages](https://dxshelley.github.io/ai-translate/#support)
-- 问题反馈：[GitHub Issues](https://github.com/DXShelley/ai-translate/issues/new/choose)
-- 发布下载：[GitHub Releases](https://github.com/DXShelley/ai-translate/releases)
-- 备用支持入口：[项目支持服务](https://macosx.kooldns.cn/support/ai-translate/)
-- 页面会在 `main` 分支的 `website/` 或 Pages 工作流变更后自动部署。
-
 ## 功能
 
 - 划词翻译、当前句子翻译、当前段落翻译
@@ -179,3 +171,11 @@ src/
 单词词典信息依赖模型返回 JSON。为降低 LLM 输出非标准 JSON 的影响，项目内置 `jsonrepair` 浏览器构建，用于修复常见 JSON 格式问题，再统一格式化为稳定字段结构。
 
 开发规范见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+
+## 项目支持
+
+- 项目功能说明与支持：[GitHub Pages](https://dxshelley.github.io/ai-translate/#support)
+- 问题反馈：[GitHub Issues](https://github.com/DXShelley/ai-translate/issues/new/choose)
+- 发布下载：[GitHub Releases](https://github.com/DXShelley/ai-translate/releases)
+- 备用支持入口：[项目支持服务](https://macosx.kooldns.cn/support/ai-translate/)
+- 页面会在 `main` 分支的 `website/` 或 Pages 工作流变更后自动部署。
