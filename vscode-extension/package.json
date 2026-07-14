@@ -14,7 +14,7 @@
   },
   "homepage": "https://github.com/DXShelley/ai-translate#readme",
   "bugs": {
-    "url": "https://macosx.kooldns.cn/support/?project=DxShelley.ai-translate-hover"
+    "url": "https://macosx.kooldns.cn/support/ai-translate/"
   },
   "engines": {
     "vscode": "^1.85.0"

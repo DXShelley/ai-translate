@@ -44,6 +44,12 @@ Pop-Location
 
 期望生成：`dist/ai-translate-hover-5.0.0.vsix`。发布前使用 VS Code 的 `Install from VSIX...` 验证安装，并检查选词悬停、用户自定义快捷键、词典发音和模型回退。
 
+## 项目支持页与 Pages 部署
+
+支持页静态文件位于 `website/`，通过 `.github/workflows/pages.yml` 发布到 GitHub Pages。向 `main` 推送支持页或工作流变更会自动部署；也可在 GitHub Actions 中手动运行 `Deploy Support Page`。
+
+部署完成后的地址为：`https://dxshelley.github.io/ai-translate/`。
+
 ## 安装步骤
 
 ### Chrome / Edge
