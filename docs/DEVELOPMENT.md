@@ -466,9 +466,15 @@ git checkout dev
 .gitignore
 README.md
 manifest.json
+package.json
+package-lock.json
 docs/
 scripts/
 src/
+vscode-extension/
+AI-Translate-chrome.zip
+AI-Translate-edge.zip
+AI-Translate-firefox.zip
 ```
 
 不得将以下内容提交到 `main`：
@@ -484,7 +490,7 @@ build/
 *.bak
 ```
 
-其中 `src/vendor/` 是扩展运行依赖目录，属于必要文件，必须保留。
+其中 `src/vendor/` 是浏览器扩展运行依赖目录，属于必要文件，必须保留。`vscode-extension/` 是 VS Code 插件源码和打包配置，也属于必要文件；`dist/` 中的 VSIX 仍为本地构建产物，不进入 `main`。
 
 ### dev 到 main 的同步流程
 
@@ -505,7 +511,7 @@ powershell -ExecutionPolicy Bypass -File scripts\sync-dev-to-main.ps1 -Push
 1. 要求当前分支必须是 `dev`。
 2. 要求工作区必须干净。
 3. 切换到 `main`。
-4. 只从 `dev` 同步必要文件范围。
+4. 只从 `dev` 同步必要文件范围，包括浏览器 zip 和 VS Code 插件源码。
 5. 如有变更，自动提交到 `main`。
 6. 返回 `dev`。
 7. 使用 `-Push` 时推送 `dev` 和 `main`。
@@ -516,3 +522,4 @@ powershell -ExecutionPolicy Bypass -File scripts\sync-dev-to-main.ps1 -Push
 2. 再同步必要文件到 `main`。
 3. 推送时同时推送 `dev` 和 `main`。
 4. 发布版本时在 `main` 上打 tag。
+5. 每次发布必须先执行 `npm run build` 和 `vscode-extension/npm run check`、`vscode-extension/npm run package`，验证浏览器 zip 与 VSIX 版本一致。

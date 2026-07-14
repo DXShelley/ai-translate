@@ -9,9 +9,15 @@ $necessaryPaths = @(
   ".gitignore",
   "README.md",
   "manifest.json",
+  "package.json",
+  "package-lock.json",
   "docs",
   "scripts",
-  "src"
+  "src",
+  "vscode-extension",
+  "AI-Translate-chrome.zip",
+  "AI-Translate-edge.zip",
+  "AI-Translate-firefox.zip"
 )
 
 Push-Location $root
