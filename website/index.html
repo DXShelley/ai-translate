@@ -3,72 +3,123 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="AI Translate 项目支持、安装与反馈入口" />
-    <title>AI Translate - 项目支持</title>
+    <meta name="description" content="AI Translate 浏览器扩展与 VS Code 插件功能说明" />
+    <title>AI Translate - 浏览器与 VS Code 翻译工具</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="shell header-inner">
-        <a class="brand" href="https://github.com/DXShelley/ai-translate">
+        <a class="brand" href="#top">
           <img src="./icon128.png" alt="AI Translate" />
           <span>AI Translate</span>
         </a>
-        <a class="header-link" href="https://github.com/DXShelley/ai-translate/releases">发布版本</a>
+        <nav aria-label="页面导航">
+          <a href="#browser">浏览器扩展</a>
+          <a href="#vscode">VS Code</a>
+          <a href="#install">安装</a>
+          <a href="#support">项目支持</a>
+        </nav>
       </div>
     </header>
 
-    <main>
+    <main id="top">
       <section class="intro">
         <div class="shell intro-grid">
           <div>
-            <p class="eyebrow">PROJECT SUPPORT</p>
-            <h1>安装、使用与反馈</h1>
-            <p class="lede">浏览器扩展与 VS Code 选词词典，共用一个发布与支持入口。</p>
+            <p class="eyebrow">TRANSLATION, WHERE YOU READ</p>
+            <h1>在网页与编辑器中，直接理解原文。</h1>
+            <p class="lede">AI Translate 同时提供浏览器扩展和 VS Code 插件：前者处理网页划词，后者帮助中文用户阅读英文 Skill 文档。</p>
+            <p class="release-line">当前发布版本 <strong>v5.0.1</strong></p>
           </div>
-          <dl class="release-note">
-            <div><dt>当前主版本</dt><dd>v5.0.0</dd></div>
-            <div><dt>支持范围</dt><dd>Browser / VS Code</dd></div>
-          </dl>
+          <div class="mode-mark" aria-label="两个插件入口">
+            <span>WEB</span><i></i><span>CODE</span>
+          </div>
         </div>
       </section>
 
-      <section class="shell support-grid" aria-label="支持入口">
-        <article>
-          <p class="section-label">安装</p>
-          <h2>获取发布包</h2>
-          <p>从 GitHub Release 下载 Chrome、Edge、Firefox 浏览器扩展包，或下载 VS Code VSIX。</p>
-          <a class="action-link" href="https://github.com/DXShelley/ai-translate/releases/latest">打开最新发布</a>
-        </article>
-        <article>
-          <p class="section-label">使用说明</p>
-          <h2>查看项目文档</h2>
-          <p>浏览器扩展支持网页划词翻译；VS Code 扩展适合阅读英文 Skill 文档时查询词典与释义。</p>
-          <a class="action-link" href="https://github.com/DXShelley/ai-translate#readme">阅读 README</a>
-        </article>
-        <article>
-          <p class="section-label">反馈</p>
-          <h2>提交问题或建议</h2>
-          <p>请附上使用环境、操作步骤、实际结果和预期结果，便于定位与处理。</p>
-          <a class="action-link" href="https://github.com/DXShelley/ai-translate/issues/new/choose">创建 GitHub Issue</a>
-        </article>
+      <section class="shell overview" aria-label="项目概览">
+        <p class="section-label">两种使用场景</p>
+        <div class="overview-grid">
+          <article>
+            <h2>浏览器扩展</h2>
+            <p>为网页阅读提供划词、句子和段落翻译。支持本地或 OpenAI 兼容模型、多模型优先级回退，以及中英自动方向判断。</p>
+          </article>
+          <article>
+            <h2>VS Code 插件</h2>
+            <p>在编辑器内选择单词后查询词典。适合阅读英文 Skill 文档时查看音标、英美发音和中英文释义。</p>
+          </article>
+        </div>
       </section>
 
-      <section class="shell help-band" aria-label="快速排查">
-        <div>
-          <p class="section-label">快速排查</p>
-          <h2>翻译或词典没有结果</h2>
+      <section id="browser" class="feature-band browser-band">
+        <div class="shell feature-layout">
+          <div class="feature-index">01</div>
+          <div>
+            <p class="section-label">浏览器扩展</p>
+            <h2>网页阅读的翻译工具链</h2>
+            <ul class="feature-list">
+              <li>划词、句子、段落三种翻译粒度。</li>
+              <li>OpenAI 兼容接口、多模型优先级与失败回退。</li>
+              <li>英文词典、历史记录、右键菜单与快捷键入口。</li>
+              <li>Chrome、Edge、Firefox 三种发布包。</li>
+            </ul>
+            <a class="action-link" href="https://github.com/DXShelley/ai-translate/blob/main/docs/BROWSER-EXTENSIONS.md">查看浏览器扩展说明</a>
+          </div>
         </div>
-        <ol>
-          <li>确认浏览器扩展或 VS Code 扩展已更新至最新版本。</li>
-          <li>检查网络是否可以访问内置词典服务或已配置的模型接口。</li>
-          <li>仍无法解决时，附上错误提示并提交 Issue。</li>
-        </ol>
+      </section>
+
+      <section id="vscode" class="feature-band vscode-band">
+        <div class="shell feature-layout">
+          <div class="feature-index">02</div>
+          <div>
+            <p class="section-label">VS Code 插件</p>
+            <h2>为英文 Skill 文档设计的选词词典</h2>
+            <ul class="feature-list">
+              <li>选中英文单词或连续中文词语后，以悬停弹框呈现结果。</li>
+              <li>优先使用内置有道词典与翻译，必要时回退到 OpenAI 兼容接口。</li>
+              <li>展示英式/美式音标、英美发音入口、中文释义与英文释义。</li>
+              <li>支持悬停、快捷键或组合触发；快捷键由用户自行绑定。</li>
+            </ul>
+            <a class="action-link" href="https://github.com/DXShelley/ai-translate/tree/main/vscode-extension">查看 VS Code 插件说明</a>
+          </div>
+        </div>
+      </section>
+
+      <section id="install" class="shell install-section">
+        <p class="section-label">安装与发布</p>
+        <h2>从同一个 Release 获取全部交付物</h2>
+        <div class="install-grid">
+          <div>
+            <h3>浏览器</h3>
+            <p>下载 Chrome、Edge 或 Firefox 对应 zip，解压后在浏览器扩展管理页加载。</p>
+          </div>
+          <div>
+            <h3>VS Code</h3>
+            <p>下载 `.vsix`，在 Extensions 菜单中选择 <code>Install from VSIX...</code>。</p>
+          </div>
+          <a class="release-button" href="https://github.com/DXShelley/ai-translate/releases/latest">打开最新发布</a>
+        </div>
+      </section>
+
+      <section id="support" class="support-band">
+        <div class="shell support-layout">
+          <div>
+            <p class="section-label">项目支持</p>
+            <h2>遇到问题时，从可复现的信息开始。</h2>
+            <p>反馈时请说明插件版本、运行环境、操作步骤、实际结果和预期结果。涉及接口问题时请注意移除 API Key 和敏感文本。</p>
+          </div>
+          <div class="support-actions">
+            <a class="action-link" href="https://github.com/DXShelley/ai-translate/issues/new/choose">创建 GitHub Issue</a>
+            <a class="secondary-link" href="https://macosx.kooldns.cn/support/ai-translate/">备用支持入口</a>
+            <a class="secondary-link" href="https://github.com/DXShelley/ai-translate/releases">查看版本记录</a>
+          </div>
+        </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <div class="shell">AI Translate · Browser Extension and VS Code Extension</div>
+      <div class="shell">AI Translate · Browser Extension and VS Code Extension · v5.0.1</div>
     </footer>
   </body>
 </html>

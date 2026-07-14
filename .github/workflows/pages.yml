@@ -1,4 +1,4 @@
-name: Deploy Support Page
+name: Deploy Project Pages
 
 on:
   push:
