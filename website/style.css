@@ -22,6 +22,8 @@ a { color: inherit; }
 nav { display: flex; gap: 18px; font-size: 14px; }
 nav a { color: var(--muted); text-decoration: none; }
 nav a:hover, nav a:focus-visible { color: var(--teal-dark); text-decoration: underline; text-underline-offset: 4px; }
+.language-toggle { min-width: 42px; min-height: 30px; border: 1px solid var(--line); color: var(--teal-dark); background: var(--surface); font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; }
+.language-toggle:hover, .language-toggle:focus-visible { border-color: var(--teal); color: var(--surface); background: var(--teal); }
 
 .intro { background: var(--teal-dark); color: #f7fffe; }
 .intro-grid { min-height: 330px; display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 48px; padding: 66px 0 52px; }
@@ -71,7 +73,8 @@ code { padding: 1px 4px; background: #e7eded; font-family: ui-monospace, SFMono-
 @media (max-width: 720px) {
   .shell { width: min(100% - 28px, 1040px); }
   .header-inner { align-items: flex-start; padding: 12px 0; }
-  nav { max-width: 168px; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; font-size: 12px; }
+  nav { max-width: 132px; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; font-size: 12px; }
+  .language-toggle { flex: 0 0 auto; }
   .intro-grid, .overview-grid, .feature-layout, .install-grid, .support-layout { grid-template-columns: 1fr; }
   .intro-grid { min-height: 0; gap: 30px; padding: 48px 0 40px; }
   h1 { font-size: 36px; }
