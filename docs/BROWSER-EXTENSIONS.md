@@ -42,7 +42,7 @@ npm run package
 Pop-Location
 ```
 
-期望生成：`dist/ai-translate-hover-5.0.1.vsix`。发布前使用 VS Code 的 `Install from VSIX...` 验证安装，并检查选词悬停、用户自定义快捷键、词典发音和模型回退。
+期望生成：`dist/ai-translate-hover-5.0.2.vsix`。发布前使用 VS Code 的 `Install from VSIX...` 验证安装，并检查选词悬停、用户自定义快捷键、词典发音和模型回退。
 
 ## 项目功能说明页与 Pages 部署
 

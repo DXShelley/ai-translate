@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "AI Translate",
+  "description": "划词、句子和段落翻译，使用 OpenAI 兼容的本地大模型。",
+  "version": "3.0.0",
+  "permissions": ["storage", "contextMenus", "activeTab", "commands"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["vendor/jsonrepair.min.js", "browser-adapter.js", "content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options.html",
+  "action": {
+    "default_title": "AI Translate",
+    "default_popup": "popup.html"
+  },
+  "commands": {
+    "translate-selection": {
+      "suggested_key": {
+        "default": "Alt+T"
+      },
+      "description": "翻译当前选中文本"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

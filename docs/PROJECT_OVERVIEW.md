@@ -4,12 +4,12 @@
 
 ### 发布与版本
 
-- 当前发布版本为 `v5.0.1`。
+- 当前发布版本为 `v5.0.2`。
 - 发布包：
   - `AI-Translate-chrome.zip`
   - `AI-Translate-edge.zip`
   - `AI-Translate-firefox.zip`
-- VS Code 发布包：`dist/ai-translate-hover-5.0.1.vsix`。
+- VS Code 发布包：`dist/ai-translate-hover-5.0.2.vsix`。
 - 构建入口：`npm run build`，实际执行 `scripts/build.js`。
 - 构建脚本会生成 `packages/chrome`、`packages/edge`、`packages/firefox`，并刷新对应 zip。
 - 每次发布还必须进入 `vscode-extension/` 执行 `npm run check` 和 `npm run package`。

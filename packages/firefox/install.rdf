@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RDF:RDF xmlns:RDF="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:em="http://www.mozilla.org/2004/em-rdf#">
+  <RDF:Description about="urn:mozilla:extensions:root">
+    <em:id>ai-translate@temp-translate</em:id>
+    <em:name>AI Translate</em:name>
+    <em:version>3.0.0</em:version>
+    <em:description>Selection, sentence, and paragraph translation with local AI model.</em:description>
+    <em:creator>yuzq</em:creator>
+    <em:homepageURL>https://github.com/yuzq/temp-translate</em:homepageURL>
+    <em:targetApplication>
+      <RDF:Description>
+        <em:id>{ec8030f7-c20a-464f-9b0e-13a3a9e97e09}</em:id>
+        <em:minVersion>78.0</em:minVersion>
+        <em:maxVersion>120.*</em:maxVersion>
+      </RDF:Description>
+    </em:targetApplication>
+    <em:bootstrap>false</em:bootstrap>
+    <em:hidden>false</em:hidden>
+  </RDF:Description>
+</RDF:RDF>
