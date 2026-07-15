@@ -1,6 +1,6 @@
 # AI Translate Hover for VS Code
 
-当前发布版本：`v5.0.1`。本项目同时维护浏览器扩展与 VS Code 扩展；浏览器构建说明见 [`docs/BROWSER-EXTENSIONS.md`](../docs/BROWSER-EXTENSIONS.md)。
+当前发布版本：`v5.0.2`。本项目同时维护浏览器扩展与 VS Code 扩展；浏览器构建说明见 [`docs/BROWSER-EXTENSIONS.md`](../docs/BROWSER-EXTENSIONS.md)。
 
 选中一个英文单词或连续中文词语，将鼠标停在选区上超过一秒，会显示翻译悬浮框。
 
