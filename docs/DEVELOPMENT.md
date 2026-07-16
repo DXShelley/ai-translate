@@ -66,7 +66,7 @@
 模型配置和全局设置必须保持边界清晰：
 
 - 大模型配置只放模型相关字段，例如接口地址、接口路径、鉴权、模型 ID、温度、超时、优先级、提示词和 `extraBody`。
-- 全局设置放所有模型共享字段，例如翻译方向、原文语言、译文语言、弹框语言、悬停翻译、输入框翻译和请求日志开关。
+- 全局设置放所有模型共享字段，例如翻译方向、原文语言、译文语言、弹框语言、悬停翻译、输入框翻译、请求日志和外部单词本适配。
 - `profileTextSnapshot()` 不应把全局设置字段写入单个模型 JSON。
 - `fillForm()` 和 `applyProfileTextToForm()` 不应把模型 JSON 中的全局字段覆盖到全局表单。
 
@@ -131,6 +131,33 @@ MiniMax 使用 OpenAI 兼容协议：
 - 导出日志仍导出当前本地存储中的全部日志，最多 20 条。
 
 用户要求清空运行时会话/日志时，项目侧没有文件型会话数据。扩展请求日志在浏览器本地存储中，需要通过配置页“请求日志”面板的“清空”按钮删除。
+
+### 外部单词本适配
+
+单词本适配配置归属 `settings`，默认必须保持关闭。相关字段为：
+
+```text
+vocabularyEnabled
+vocabularyAutoSave
+vocabularyMethod
+vocabularyUrl
+vocabularyHeaders
+vocabularyBodyTemplate
+vocabularyAuthType
+vocabularyAuthToken
+```
+
+`src/popup.js` 和 `src/content.js` 只在原始查询被识别为英文单词且查询成功后，依据 `vocabularyEnabled` 和 `vocabularyAutoSave` 调用 `LIT_SAVE_VOCABULARY`。中文输入走翻译；其他非英文输入不得请求英文词典或单词本。`src/background.js` 是唯一允许执行外部单词本 HTTP 请求的位置，并必须拒绝非英文词条。
+
+实现约束：
+
+- 单词本请求不能阻塞或改变词典查询的成功结果；自动请求异常只记录到控制台和可选请求日志。
+- 自动收藏的触发单位是用户的每次英文单词查词操作，而不是词典 HTTP 请求。即使词典信息命中内存或最近结果缓存，也必须再次调用 `LIT_SAVE_VOCABULARY`，以支持外部单词本累计重复查询次数。
+- 当单词本适配启用且自动收藏关闭时，网页弹框和扩展工具栏的英文单词查询结果都必须显示手动“收藏”按钮；自动收藏开启、单词本适配关闭或原始查询不是英文单词时不显示。手动收藏必须使用原始英文查询，不能使用词典响应改写后的词条。
+- 支持 `GET`、`POST`，以及 `{{word}}`、`{{definition}}`、`{{phoneticUS}}`、`{{phoneticUK}}` 模板变量。GET 模板必须是 JSON 对象并转换为查询参数；无效模板必须在配置页和后台拒绝，POST 将模板结果作为请求体。
+- 请求头必须是 JSON 对象。认证支持 `none`、`bearer`、`basic`；其他认证方式通过自定义请求头实现。
+- 开启 `settings.requestLogging` 时，以 `type: "vocabulary"` 写入 `requestLogs`，包含 URL、请求头、请求体、响应、状态码、耗时和错误；配置解析失败也必须写入错误日志。配置页日志详情必须展示 HTTP 状态码。保存前必须脱敏请求头中的 `authorization`、`apiKey`、`token`、`secret` 等字段。
+- 单词本配置会随全局配置导入和导出；新增字段时需要同步 `DEFAULT_CONFIG`、`normalizeSettings`、`readSettingsFromForm` 与 `GLOBAL_SETTING_FIELDS`。
 
 用户要求清空 Codex 会话时，只清理会话目录和索引文件：
 

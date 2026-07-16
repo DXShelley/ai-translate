@@ -247,6 +247,26 @@
   padding: 14px 16px 16px;
 }
 
+#lit-translator-root .lit-vocabulary-save {
+  background: #eef6ff;
+  border: 1px solid #8bbcf6;
+  border-radius: 6px;
+  color: #155eaf;
+  cursor: pointer;
+  float: right;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  margin: 0 0 8px 10px;
+  min-height: 28px;
+  padding: 5px 9px;
+}
+
+#lit-translator-root .lit-vocabulary-save:disabled {
+  color: #64748b;
+  cursor: wait;
+}
+
 #lit-translator-root .lit-phonetics {
   color: #3c4043;
   display: grid;
