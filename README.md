@@ -4,10 +4,10 @@
 
 项目包含两类插件：浏览器扩展与 VS Code 扩展。浏览器扩展提供网页划词、句子和段落翻译；VS Code 扩展面向中文用户阅读英文 Skill 文档，提供选词悬停词典和翻译辅助。
 
-`v5.0.2` 发布产物：
+`v6.0.0` 发布产物：
 
 - 浏览器：`AI-Translate-chrome.zip`、`AI-Translate-edge.zip`、`AI-Translate-firefox.zip`
-- VS Code：[vscode-extension/](vscode-extension/README.md) 构建生成 `dist/ai-translate-hover-5.0.2.vsix`，可通过 `Install from VSIX...` 安装。
+- VS Code：[vscode-extension/](vscode-extension/README.md) 构建生成 `dist/ai-translate-hover-6.0.0.vsix`，可通过 `Install from VSIX...` 安装。
 
 VS Code 扩展最低兼容版本为 `1.85.0`，完整兼容性说明见 [`vscode-extension/README.md`](vscode-extension/README.md)。
 
@@ -32,6 +32,7 @@ VS Code 扩展主要面向中文用户阅读英文 Skill 文档的场景，提�
 - 输入框连续空格触发翻译，可在配置页关闭或调整空格次数
 - 暂时隐藏对照翻译的一一高亮能力，当前只展示原文和译文文本；后续再完善 span alignment
 - 英文单词词典信息：音标、美式/英式朗读、释义、例句、同义词、反义词
+- 浏览器扩展和 VS Code 插件均支持通用外部单词本适配：查询后自动收藏或手动收藏，支持 GET/POST、请求头、认证和请求模板
 - 最近 100 条翻译和单词查询历史保存在扩展本地存储
 - 多模型配置、优先级 fallback、模型列表获取
 - OpenAI 兼容 `/v1/chat/completions` 接口
@@ -127,6 +128,33 @@ POST http://localhost:1234/v1/chat/completions
 3. 优先级相同的模型按配置列表从上到下 fallback
 
 所有模型失败时，错误会汇总返回。
+
+## 外部单词本适配
+
+浏览器扩展和 VS Code 插件只负责把查询到的英文单词信息提交给外部应用，不保存或管理单词本数据。该功能默认关闭；启用后，默认会在英文单词查询成功后异步自动收藏。每次用户查询英文单词都会发送一次收藏请求，即使词典信息命中本地缓存，以支持外部单词本统计重复查询的薄弱单词。中文输入走翻译；其他非英文输入不会请求词典或单词本。
+
+关闭“查询后自动收藏”后，网页弹框、浏览器扩展工具栏和 VS Code 悬停弹框的英文单词查询结果都会显示“收藏”按钮，供用户手动提交；启用自动收藏时不显示该按钮。浏览器端成功后显示“已收藏”，失败后可点击“重试收藏”；VS Code 端通过命令执行并显示结果通知。手动提交始终使用用户的原始英文查询。
+
+单词本配置项如下：
+
+- API 地址：外部单词本接收请求的完整 URL。
+- 请求方法：`POST` 或 `GET`。
+- 请求头：JSON 对象，可放置任意服务所需的自定义头。
+- 认证方式：无认证、Bearer Token，或 Basic（认证凭据填写 `用户名:密码`）。也可直接在请求头中配置其他认证机制。
+- 请求体 / GET 参数模板：支持 `{{word}}`、`{{definition}}`、`{{phoneticUS}}`、`{{phoneticUK}}`。`GET` 模板必须是 JSON 对象，并会转换为 URL 查询参数；`POST` 模板按原文本作为请求体发送。
+
+默认 `POST` 模板：
+
+```json
+{
+  "word": "{{word}}",
+  "definition": "{{definition}}",
+  "phoneticUS": "{{phoneticUS}}",
+  "phoneticUK": "{{phoneticUK}}"
+}
+```
+
+单词本请求在词典结果已展示后独立执行。请求失败不会影响查词、发音或翻译。浏览器端可开启“请求日志”，在配置页日志面板检查 URL、请求头、请求体、响应、HTTP 状态、耗时和错误；无效请求头或 GET 模板也会写入错误日志。`Authorization`、API Key、Token、Secret 等请求头字段在日志中会显示为 `***`。VS Code 端的单词本设置位于独立的 `AI Translate Hover: Vocabulary` 设置组。
 
 ## 使用方式
 

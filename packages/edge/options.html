@@ -163,12 +163,23 @@
 
                 <label>
                   <span>原文语言</span>
-                  <input id="sourceLanguage" name="sourceLanguage" placeholder="自动检测" autocomplete="off">
+                  <select id="sourceLanguage" name="sourceLanguage">
+                    <option value="自动检测">自动检测</option>
+                    <option value="简体中文">简体中文</option>
+                    <option value="繁體中文">繁體中文</option>
+                    <option value="English">English</option>
+                    <option value="日本語">日本語</option>
+                    <option value="한국어">한국어</option>
+                    <option value="Français">Français</option>
+                    <option value="Deutsch">Deutsch</option>
+                    <option value="Español">Español</option>
+                  </select>
                 </label>
 
                 <label>
                   <span>译文语言</span>
                   <select id="targetLanguage" name="targetLanguage">
+                    <option value="自动检测">自动检测</option>
                     <option value="简体中文">简体中文</option>
                     <option value="繁體中文">繁體中文</option>
                     <option value="English">English</option>
@@ -249,6 +260,15 @@
                     <option value="true">开启</option>
                   </select>
                 </label>
+
+                <label><span>单词本适配</span><select id="vocabularyEnabled" name="vocabularyEnabled"><option value="false">关闭</option><option value="true">启用</option></select></label>
+                <label><span>查询后自动收藏</span><select id="vocabularyAutoSave" name="vocabularyAutoSave"><option value="true">启用</option><option value="false">关闭</option></select></label>
+                <label><span>请求方法</span><select id="vocabularyMethod" name="vocabularyMethod"><option value="POST">POST</option><option value="GET">GET</option></select></label>
+                <label><span>认证方式</span><select id="vocabularyAuthType" name="vocabularyAuthType"><option value="none">无</option><option value="bearer">Bearer Token</option><option value="basic">Basic（用户名:密码）</option></select></label>
+                <label class="form-field-full"><span>单词本 API 地址</span><input id="vocabularyUrl" name="vocabularyUrl" type="url" placeholder="https://example.com/api/vocabulary"></label>
+                <label><span>认证凭据</span><input id="vocabularyAuthToken" name="vocabularyAuthToken" type="password" autocomplete="off" placeholder="Token 或 用户名:密码"></label>
+                <label class="form-field-full"><span>请求头（JSON）</span><textarea id="vocabularyHeaders" name="vocabularyHeaders" rows="4" spellcheck="false"></textarea></label>
+                <label class="form-field-full"><span>请求体 / GET 参数模板</span><textarea id="vocabularyBodyTemplate" name="vocabularyBodyTemplate" rows="6" spellcheck="false"></textarea><small>支持 {{word}}、{{definition}}、{{phoneticUS}}、{{phoneticUK}}。GET 时 JSON 对象会转换为查询参数。</small></label>
 
                 <label>
                   <span>触发空格次数</span>

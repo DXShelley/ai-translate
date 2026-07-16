@@ -8,9 +8,6 @@ const DEFAULT_PROFILE = {
   model: "local-model",
   presetId: "lmstudio",
   authType: "bearer",
-  translationMode: "auto-zh-en",
-  sourceLanguage: "自动检测",
-  targetLanguage: "简体中文",
   extraBody: {
     enable_thinking: false,
     thinking: false,
@@ -38,10 +35,18 @@ const DEFAULT_CONFIG = {
     bilingualLayout: "vertical",
     requestLogging: false,
     builtinApiEnabled: true,
+    vocabularyEnabled: false,
+    vocabularyAutoSave: true,
+    vocabularyMethod: "POST",
+    vocabularyUrl: "",
+    vocabularyHeaders: "{\n  \"Content-Type\": \"application/json\"\n}",
+    vocabularyBodyTemplate: "{\n  \"word\": \"{{word}}\",\n  \"definition\": \"{{definition}}\",\n  \"phoneticUS\": \"{{phoneticUS}}\",\n  \"phoneticUK\": \"{{phoneticUK}}\"\n}",
+    vocabularyAuthType: "none",
+    vocabularyAuthToken: "",
     popupLanguage: "all",
     translationMode: "auto-zh-en",
     sourceLanguage: "自动检测",
-    targetLanguage: "简体中文"
+    targetLanguage: "自动检测"
   }
 };
 
@@ -285,6 +290,7 @@ const GLOBAL_SETTING_FIELDS = new Set([
   "inputTranslate",
   "requestLogging",
   "builtinApiEnabled",
+  "vocabularyEnabled", "vocabularyAutoSave", "vocabularyMethod", "vocabularyUrl", "vocabularyHeaders", "vocabularyBodyTemplate", "vocabularyAuthType", "vocabularyAuthToken",
   "inputTriggerSpaces"
 ]);
 
@@ -317,6 +323,9 @@ if (form) {
 
   form.addEventListener("change", (event) => {
     trackProfileEditSource(event.target);
+    if (event.target.name === "translationMode") {
+      syncTranslationLanguageFields();
+    }
   });
 }
 
@@ -683,8 +692,9 @@ async function load() {
   }
 
   const saved = await browserApi.storage.sync.get(null);
+  const legacySettings = Array.isArray(saved.profiles) && saved.profiles.length ? saved.profiles[0] : saved;
   profiles = normalizeProfiles(saved);
-  settings = normalizeSettings({ ...(profiles[0] || {}), ...(saved.settings || {}) });
+  settings = normalizeSettings({ ...(legacySettings || {}), ...(saved.settings || {}) });
   activeProfileId = profiles.some((profile) => profile.id === saved.activeProfileId)
     ? saved.activeProfileId
     : profiles[0].id;
@@ -715,6 +725,33 @@ async function save() {
 }
 
 function validateSettingsBeforeSave(nextSettings, nextProfiles) {
+  if (nextSettings.translationMode === "manual" && (
+    nextSettings.sourceLanguage === "自动检测" || nextSettings.targetLanguage === "自动检测"
+  )) {
+    return "手动指定模式需要分别选择原文语言和译文语言。";
+  }
+  if (nextSettings.vocabularyEnabled) {
+    if (!nextSettings.vocabularyUrl) return "启用单词本适配后，必须填写 API 地址。";
+    try {
+      new URL(nextSettings.vocabularyUrl);
+    } catch {
+      return "单词本 API 地址不是有效的 URL。";
+    }
+    try {
+      const headers = JSON.parse(nextSettings.vocabularyHeaders);
+      if (!headers || typeof headers !== "object" || Array.isArray(headers)) throw new Error();
+    } catch {
+      return "单词本请求头必须是有效的 JSON 对象。";
+    }
+    if (nextSettings.vocabularyMethod === "GET") {
+      try {
+        const template = JSON.parse(nextSettings.vocabularyBodyTemplate);
+        if (!template || typeof template !== "object" || Array.isArray(template)) throw new Error();
+      } catch {
+        return "GET 参数模板必须是有效的 JSON 对象。";
+      }
+    }
+  }
   if (nextSettings.builtinApiEnabled !== false) return "";
   const enabledProfiles = nextProfiles.map(normalizeProfile).filter((profile) => profile.enabled);
   if (!enabledProfiles.length) {
@@ -817,6 +854,14 @@ function normalizeSettings(value) {
     builtinApiEnabled: typeof source.builtinApiEnabled === "boolean"
       ? source.builtinApiEnabled
       : DEFAULT_CONFIG.settings.builtinApiEnabled,
+    vocabularyEnabled: source.vocabularyEnabled === true,
+    vocabularyAutoSave: source.vocabularyAutoSave !== false,
+    vocabularyMethod: String(source.vocabularyMethod || "POST").toUpperCase() === "GET" ? "GET" : "POST",
+    vocabularyUrl: String(source.vocabularyUrl || "").trim(),
+    vocabularyHeaders: String(source.vocabularyHeaders ?? DEFAULT_CONFIG.settings.vocabularyHeaders),
+    vocabularyBodyTemplate: String(source.vocabularyBodyTemplate ?? DEFAULT_CONFIG.settings.vocabularyBodyTemplate),
+    vocabularyAuthType: ["none", "bearer", "basic"].includes(source.vocabularyAuthType) ? source.vocabularyAuthType : "none",
+    vocabularyAuthToken: String(source.vocabularyAuthToken || ""),
     popupLanguage: normalizePopupLanguage(source.popupLanguage || DEFAULT_CONFIG.settings.popupLanguage),
     translationMode: ["auto-zh-en", "manual"].includes(source.translationMode)
       ? source.translationMode
@@ -892,7 +937,7 @@ async function renderRequestLogs() {
         <span class="log-main">
           <span class="log-status ${log.ok ? "ok" : "error"}">${log.ok ? "成功" : "失败"}</span>
           <span>${escapeHtml(log.type || "chat")}</span>
-          <span>${escapeHtml(log.model || "-")}</span>
+           <span>${escapeHtml(log.model || (log.type === "vocabulary" ? "单词本" : "-"))}</span>
         </span>
         <span class="log-meta">${escapeHtml(formatLogTime(log.createdAt))} · ${Number(log.durationMs || 0)}ms</span>
       </span>
@@ -920,7 +965,9 @@ function renderRequestLogDetail(log) {
       <span class="log-status ${log.ok ? "ok" : "error"}">${log.ok ? "成功" : "失败"}</span>
     </div>
     <div class="log-detail-grid">
-      <label class="log-field compact"><span>请求 URL</span><pre>${escapeHtml(log.url || "")}</pre></label>
+       <label class="log-field compact"><span>请求 URL</span><pre>${escapeHtml(log.url || "")}</pre></label>
+       ${log.responseStatus ? `<label class="log-field compact"><span>HTTP 状态码</span><pre>${escapeHtml(String(log.responseStatus))}</pre></label>` : ""}
+       ${log.requestHeaders ? `<label class="log-field compact"><span>请求头（敏感字段已脱敏）</span><pre>${escapeHtml(formatLogContent(log.requestHeaders))}</pre></label>` : ""}
       <label class="log-field log-field-large">
         <span class="log-field-head">
           <span>输入</span>
@@ -1098,21 +1145,46 @@ function fillSettings(nextSettings) {
     const field = form.elements[key];
     if (field) field.value = String(value);
   }
+  syncTranslationLanguageFields();
+}
+
+function syncTranslationLanguageFields() {
+  const automatic = form.elements.translationMode.value === "auto-zh-en";
+  const sourceLanguage = form.elements.sourceLanguage;
+  const targetLanguage = form.elements.targetLanguage;
+
+  if (automatic) {
+    sourceLanguage.value = "自动检测";
+    targetLanguage.value = "自动检测";
+  }
+
+  sourceLanguage.disabled = automatic;
+  targetLanguage.disabled = automatic;
 }
 
 function readSettingsFromForm() {
+  const translationMode = form.elements.translationMode.value || DEFAULT_CONFIG.settings.translationMode;
+  const automatic = translationMode === "auto-zh-en";
   return {
     displayMode: form.elements.displayMode.value || DEFAULT_CONFIG.settings.displayMode,
     bilingualLayout: form.elements.bilingualLayout.value || DEFAULT_CONFIG.settings.bilingualLayout,
     hoverTranslate: form.elements.hoverTranslate.value === "true",
     hoverModifier: form.elements.hoverModifier.value || DEFAULT_CONFIG.settings.hoverModifier,
     popupLanguage: normalizePopupLanguage(form.elements.popupLanguage.value || DEFAULT_CONFIG.settings.popupLanguage),
-    translationMode: form.elements.translationMode.value || DEFAULT_CONFIG.settings.translationMode,
-    sourceLanguage: form.elements.sourceLanguage.value.trim() || DEFAULT_CONFIG.settings.sourceLanguage,
-    targetLanguage: form.elements.targetLanguage.value.trim() || DEFAULT_CONFIG.settings.targetLanguage,
+    translationMode,
+    sourceLanguage: automatic ? "自动检测" : (form.elements.sourceLanguage.value.trim() || DEFAULT_CONFIG.settings.sourceLanguage),
+    targetLanguage: automatic ? "自动检测" : (form.elements.targetLanguage.value.trim() || DEFAULT_CONFIG.settings.targetLanguage),
     inputTranslate: form.elements.inputTranslate.value === "true",
     requestLogging: form.elements.requestLogging.value === "true",
     builtinApiEnabled: form.elements.builtinApiEnabled.value !== "false",
+    vocabularyEnabled: form.elements.vocabularyEnabled.value === "true",
+    vocabularyAutoSave: form.elements.vocabularyAutoSave.value !== "false",
+    vocabularyMethod: form.elements.vocabularyMethod.value === "GET" ? "GET" : "POST",
+    vocabularyUrl: form.elements.vocabularyUrl.value.trim(),
+    vocabularyHeaders: form.elements.vocabularyHeaders.value.trim() || DEFAULT_CONFIG.settings.vocabularyHeaders,
+    vocabularyBodyTemplate: form.elements.vocabularyBodyTemplate.value,
+    vocabularyAuthType: form.elements.vocabularyAuthType.value || "none",
+    vocabularyAuthToken: form.elements.vocabularyAuthToken.value,
     inputTriggerSpaces: clampNumber(
       Number(form.elements.inputTriggerSpaces.value || DEFAULT_CONFIG.settings.inputTriggerSpaces),
       2,
@@ -1305,21 +1377,17 @@ function uniqueProfileNameFromSet(baseName, used) {
 }
 
 function normalizeProfile(profile) {
+  const { translationMode, sourceLanguage, targetLanguage, ...profileFields } = profile || {};
   const model = profile?.model || DEFAULT_PROFILE.model;
   const presetId = normalizePresetId(profile?.presetId || inferPresetIdFromProfile(profile));
   return {
     ...DEFAULT_PROFILE,
-    ...profile,
+    ...profileFields,
     presetId,
     id: profile?.id || crypto.randomUUID(),
     name: profile?.name || model,
     endpointPath: profile?.endpointPath || DEFAULT_PROFILE.endpointPath,
     authType: profile?.authType || DEFAULT_PROFILE.authType,
-    translationMode: ["auto-zh-en", "manual"].includes(profile?.translationMode)
-      ? profile.translationMode
-      : DEFAULT_PROFILE.translationMode,
-    sourceLanguage: String(profile?.sourceLanguage || DEFAULT_PROFILE.sourceLanguage).trim() || DEFAULT_PROFILE.sourceLanguage,
-    targetLanguage: String(profile?.targetLanguage || DEFAULT_PROFILE.targetLanguage).trim() || DEFAULT_PROFILE.targetLanguage,
     extraBody: normalizeObject(profile?.extraBody, DEFAULT_PROFILE.extraBody),
     userPromptTemplate: String(profile?.userPromptTemplate || DEFAULT_PROFILE.userPromptTemplate).trim() || DEFAULT_PROFILE.userPromptTemplate,
     priority: clampPriority(profile?.priority || DEFAULT_PROFILE.priority),

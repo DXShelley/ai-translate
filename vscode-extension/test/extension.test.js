@@ -59,6 +59,13 @@ assert.doesNotMatch(
   extension.createPronunciationPlayerHtml("https://dict.youdao.com/dictvoice?audio=translation&type=2", "</script><script>bad()</script>"),
   /<\/script><script>bad\(\)<\/script>/
 );
+const vocabularyPopupMarkdown = [];
+extension.appendDictionaryMarkdown({ appendMarkdown(value) { vocabularyPopupMarkdown.push(value); } }, wordInfo, "", {
+  vocabularyEnabled: true,
+  vocabularyAutoSave: false
+});
+assert.match(vocabularyPopupMarkdown[0], /\[收藏\]/);
+assert.match(vocabularyPopupMarkdown[1], /英/);
 assert.deepEqual(
   extension.mergeTrustedDomains(["https://example.com"], "https://dict.youdao.com"),
   ["https://example.com", "https://dict.youdao.com"]
@@ -144,7 +151,45 @@ function verifyCacheEviction() {
   assert.equal(extension.readCache(cache, "first", 101), undefined);
 }
 
+async function verifyVocabularySave() {
+  const server = http.createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      assert.equal(request.method, "POST");
+      assert.equal(request.headers.authorization, "Bearer vocabulary-token");
+      assert.equal(request.headers["content-type"], "application/json");
+      assert.deepEqual(JSON.parse(body), {
+        word: "translation",
+        definition: "翻译",
+        phoneticUS: "tranz",
+        phoneticUK: "trans"
+      });
+      response.writeHead(201);
+      response.end();
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const result = await extension.saveVocabulary("translation", {
+      definitionsZh: ["翻译"], phoneticUS: "tranz", phoneticUK: "trans"
+    }, {
+      vocabularyEnabled: true,
+      vocabularyUrl: `http://127.0.0.1:${server.address().port}/vocabulary`,
+      vocabularyMethod: "POST",
+      vocabularyHeaders: "{}",
+      vocabularyAuthType: "bearer",
+      vocabularyAuthToken: "vocabulary-token",
+      vocabularyBodyTemplate: "{\"word\":\"{{word}}\",\"definition\":\"{{definition}}\",\"phoneticUS\":\"{{phoneticUS}}\",\"phoneticUK\":\"{{phoneticUK}}\"}",
+      timeoutMs: 1000
+    });
+    assert.deepEqual(result, { status: 201 });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+}
+
 verifyCacheEviction();
-Promise.all([verifyOpenAiCompatibleRequest(), verifyRequestTimeout(), verifyRequestCancellation()]).catch((error) => {
+Promise.all([verifyOpenAiCompatibleRequest(), verifyRequestTimeout(), verifyRequestCancellation(), verifyVocabularySave()]).catch((error) => {
   process.nextTick(() => { throw error; });
 });

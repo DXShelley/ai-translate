@@ -10,9 +10,11 @@
     bilingualLayout: "vertical",
     popupLanguage: "all",
     builtinApiEnabled: true,
+    vocabularyEnabled: false,
+    vocabularyAutoSave: true,
     translationMode: "auto-zh-en",
     sourceLanguage: "自动检测",
-    targetLanguage: "简体中文"
+    targetLanguage: "自动检测"
   };
   const state = {
     lastPointer: { x: 0, y: 0 },
@@ -30,6 +32,7 @@
     cache: Object.create(null),
     wordCache: Object.create(null),
     pendingTranslations: Object.create(null),
+    pendingWordInfo: Object.create(null),
     session: null,
     activeTranslationKey: "",
     activeWordKey: "",
@@ -244,7 +247,7 @@
       setActiveMode(mode);
       state.activeTranslationKey = cacheKey;
       showPanel(mode, text, cached.result);
-      if (isEnglish && !wordCached) requestWordInfo(text);
+      if (isEnglish) requestWordInfo(text);
       return;
     }
     const reusable = findReusableTranslation(mode, text);
@@ -258,7 +261,7 @@
       setActiveMode(mode);
       state.activeTranslationKey = cacheKey;
       showPanel(mode, text, reusable.result);
-      if (isEnglish && !wordCached) requestWordInfo(text);
+      if (isEnglish) requestWordInfo(text);
       return;
     }
     if (cached?.status === "loading") {
@@ -266,7 +269,7 @@
       state.activeTranslationKey = cacheKey;
       showPanel(mode, text, "翻译中...");
       await waitForPendingTranslation(cacheKey, mode, text);
-      if (isEnglish && !wordCached) requestWordInfo(text);
+      if (isEnglish) requestWordInfo(text);
       return;
     }
     const closeToken = state.closeToken;
@@ -277,7 +280,9 @@
 
     // 并行发送翻译和词典请求
     const translationPromise = fetchTranslation(cacheKey, mode, text);
-    const wordPromise = isEnglish && !wordCached ? fetchWordInfo(text) : Promise.resolve(null);
+    const wordPromise = isEnglish
+      ? (wordCached ? autoSaveCachedVocabulary(text) : fetchWordInfo(text))
+      : Promise.resolve(null);
 
     try {
       const [translationSettled] = await Promise.allSettled([translationPromise, wordPromise]);
@@ -315,35 +320,7 @@
   }
 
   function fetchWordInfo(word) {
-    const normalizedWord = normalizeWord(word);
-    const cacheKey = `word:${normalizedWord}`;
-    state.activeWordKey = cacheKey;
-
-    if (!state.pendingTranslations[cacheKey]) {
-      state.pendingTranslations[cacheKey] = browserApi.runtime.sendMessage({
-        type: "LIT_WORD_INFO",
-        payload: { word: normalizedWord }
-      }).finally(() => {
-        delete state.pendingTranslations[cacheKey];
-      });
-    }
-
-    return state.pendingTranslations[cacheKey].then((response) => {
-      if (!response?.ok) throw new Error(response?.error || "词典信息获取失败");
-
-      state.cache[cacheKey] = { status: "done", result: response.result };
-      state.wordCache[cacheKey] = state.cache[cacheKey];
-      saveRecentWordInfo(normalizedWord, response.result);
-      if (state.activeWordKey === cacheKey) renderWordInfo(word);
-    }).catch((error) => {
-      if (isExtensionContextInvalidated(error)) {
-        handleRuntimeInvalidated();
-        return;
-      }
-      state.cache[cacheKey] = { status: "error", error: error?.message || String(error) };
-      state.wordCache[cacheKey] = state.cache[cacheKey];
-      if (state.activeWordKey === cacheKey) renderWordInfo(word);
-    });
+    return requestWordInfo(word);
   }
 
   async function fetchTranslation(cacheKey, mode, text) {
@@ -847,27 +824,34 @@
     const cacheKey = `word:${normalizedWord}`;
     state.activeWordKey = cacheKey;
     const cached = state.wordCache[cacheKey] || state.cache[cacheKey] || findRecentWordInfo(normalizedWord);
-    if (cached?.status === "done" || cached?.status === "loading") {
+    if (cached?.status === "done") {
       state.cache[cacheKey] = cached;
       state.wordCache[cacheKey] = cached;
+      autoSaveVocabulary(normalizedWord, cached.result);
       renderWordInfo(word);
       return;
     }
 
-    state.cache[cacheKey] = { status: "loading" };
-    state.wordCache[cacheKey] = state.cache[cacheKey];
+    if (!state.pendingWordInfo[cacheKey]) {
+      state.cache[cacheKey] = { status: "loading" };
+      state.wordCache[cacheKey] = state.cache[cacheKey];
+      state.pendingWordInfo[cacheKey] = browserApi.runtime.sendMessage({
+        type: "LIT_WORD_INFO",
+        payload: { word: normalizedWord }
+      }).finally(() => {
+        delete state.pendingWordInfo[cacheKey];
+      });
+    }
     renderWordInfo(word);
 
     try {
-      const response = await browserApi.runtime.sendMessage({
-      type: "LIT_WORD_INFO",
-        payload: { word: normalizedWord }
-      });
+      const response = await state.pendingWordInfo[cacheKey];
       if (!response?.ok) throw new Error(response?.error || "词典信息获取失败");
 
       state.cache[cacheKey] = { status: "done", result: response.result };
       state.wordCache[cacheKey] = state.cache[cacheKey];
       saveRecentWordInfo(normalizedWord, response.result);
+      autoSaveVocabulary(normalizedWord, response.result);
       if (state.activeWordKey === cacheKey) renderWordInfo(word);
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
@@ -877,6 +861,54 @@
       state.cache[cacheKey] = { status: "error", error: error?.message || String(error) };
       state.wordCache[cacheKey] = state.cache[cacheKey];
       if (state.activeWordKey === cacheKey) renderWordInfo(word);
+    }
+  }
+
+  async function autoSaveVocabulary(word, wordInfo) {
+    if (!isEnglishWord(word)) return;
+    try {
+      const configResponse = await browserApi.runtime.sendMessage({ type: "LIT_GET_CONFIG" });
+      const settings = configResponse?.config?.settings;
+      if (!configResponse?.ok || settings?.vocabularyEnabled !== true || settings.vocabularyAutoSave === false) return;
+
+      const saveResponse = await browserApi.runtime.sendMessage({
+        type: "LIT_SAVE_VOCABULARY",
+        payload: { word, wordInfo }
+      });
+      if (!saveResponse?.ok) throw new Error(saveResponse?.error || "收藏失败");
+    } catch (error) {
+      // 收藏失败不影响词典查询和弹框展示。
+      console.warn("单词本自动收藏失败，不影响查词:", error);
+    }
+  }
+
+  function autoSaveCachedVocabulary(word) {
+    const normalizedWord = normalizeWord(word);
+    if (!isEnglishWord(normalizedWord)) return;
+    const cacheKey = `word:${normalizedWord}`;
+    const cached = state.wordCache[cacheKey] || state.cache[cacheKey] || findRecentWordInfo(normalizedWord);
+    if (cached?.status === "done") autoSaveVocabulary(normalizedWord, cached.result);
+  }
+
+  async function saveVocabularyManually(button) {
+    const word = normalizeWordQuery(button.dataset.vocabularySave);
+    const cacheKey = `word:${normalizeWord(word)}`;
+    const cached = state.wordCache[cacheKey] || state.cache[cacheKey] || findRecentWordInfo(normalizeWord(word));
+    if (!isEnglishWord(word) || cached?.status !== "done") return;
+
+    button.disabled = true;
+    button.textContent = "收藏中";
+    try {
+      const response = await browserApi.runtime.sendMessage({
+        type: "LIT_SAVE_VOCABULARY",
+        payload: { word, wordInfo: cached.result }
+      });
+      if (!response?.ok) throw new Error(response?.error || "收藏失败");
+      button.textContent = "已收藏";
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "重试收藏";
+      button.title = error?.message || "收藏失败";
     }
   }
 
@@ -983,20 +1015,24 @@
     }
 
     node.classList.remove("lit-error");
-    node.innerHTML = formatWordInfo(entry.result);
+    node.innerHTML = formatWordInfo(entry.result, word);
     requestAnimationFrame(() => keepPopoverInViewport());
   }
 
-  function formatWordInfo(info) {
+  function formatWordInfo(info, originalWord = "") {
     if (info?.raw && typeof info.raw === "string") return escapeHtml(info.raw);
     const speechUrls = normalizeSpeechUrls(info?.speechUrls);
+    const word = normalizeWordQuery(originalWord);
+    const manualSaveButton = state.settings.vocabularyEnabled && state.settings.vocabularyAutoSave === false && isEnglishWord(word)
+      ? `<button class="lit-vocabulary-save" type="button" data-vocabulary-save="${escapeHtml(word)}">收藏</button>`
+      : "";
 
     const sections = [
+      manualSaveButton,
       `<div class="lit-phonetics">
         <span>美 ${escapeHtml(info?.phoneticUS || "-")} ${formatSpeechButton(info?.word || "", "en-US", "word-us", "美音", "美式朗读", speechUrls.us)}</span>
         <span>英 ${escapeHtml(info?.phoneticUK || "-")} ${formatSpeechButton(info?.word || "", "en-GB", "word-uk", "英音", "英式朗读", speechUrls.uk)}</span>
       </div>`,
-      formatPartsOfSpeech(info?.partsOfSpeech),
       formatInflections(info?.inflections),
       formatChineseDefinitions(info?.definitionsZh, info?.webDefinitions),
       formatDefinitions("英文释义", info?.definitionsEn),
@@ -1008,9 +1044,14 @@
   }
 
   document.addEventListener("click", (event) => {
-    const button = event.target.closest?.("[data-speech-text]");
-    if (!button || !isInsideTranslator(button)) return;
-    speechController.speakFromButton(button);
+    const speechButton = event.target.closest?.("[data-speech-text]");
+    if (speechButton && isInsideTranslator(speechButton)) {
+      speechController.speakFromButton(speechButton);
+      return;
+    }
+
+    const saveButton = event.target.closest?.("[data-vocabulary-save]");
+    if (saveButton && isInsideTranslator(saveButton)) saveVocabularyManually(saveButton);
   }, true);
 
   function formatWordList(label, items) {
