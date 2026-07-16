@@ -1,6 +1,6 @@
 # AI Translate Hover for VS Code
 
-当前发布版本：`v5.0.2`。本项目同时维护浏览器扩展与 VS Code 扩展；浏览器构建说明见 [`docs/BROWSER-EXTENSIONS.md`](../docs/BROWSER-EXTENSIONS.md)。
+当前发布版本：`v6.0.0`。本项目同时维护浏览器扩展与 VS Code 扩展；浏览器构建说明见 [`docs/BROWSER-EXTENSIONS.md`](../docs/BROWSER-EXTENSIONS.md)。
 
 选中一个英文单词或连续中文词语，将鼠标停在选区上超过一秒，会显示翻译悬浮框。
 
@@ -47,3 +47,9 @@
 运行 `AI Translate: Open Settings` 可直接打开扩展配置。
 
 `aiTranslateHover.hoverDelayMs` 最小值为 1000；VS Code 自身的 Hover 延迟会叠加在此前。
+
+## 外部单词本
+
+设置 `aiTranslateHover.vocabularyEnabled` 为 `true` 并填写 `aiTranslateHover.vocabularyUrl` 后，英文词典查询会提交给外部单词本 API。`vocabularyAutoSave` 默认开启：每次查询成功都会异步收藏一次，即使词典结果来自本地缓存；请求失败不会影响弹框显示。关闭自动收藏后，英文词典弹框会显示“收藏”按钮。
+
+支持 `POST` 与 `GET`，可配置 JSON 请求头、Bearer Token 或 Basic 认证。`vocabularyBodyTemplate` 是 POST 请求体或 GET 参数 JSON 模板，支持 `{{word}}`、`{{definition}}`、`{{phoneticUS}}`、`{{phoneticUK}}`。

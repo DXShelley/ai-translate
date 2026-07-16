@@ -32,6 +32,7 @@
     cache: Object.create(null),
     wordCache: Object.create(null),
     pendingTranslations: Object.create(null),
+    pendingWordInfo: Object.create(null),
     session: null,
     activeTranslationKey: "",
     activeWordKey: "",
@@ -319,36 +320,7 @@
   }
 
   function fetchWordInfo(word) {
-    const normalizedWord = normalizeWord(word);
-    const cacheKey = `word:${normalizedWord}`;
-    state.activeWordKey = cacheKey;
-
-    if (!state.pendingTranslations[cacheKey]) {
-      state.pendingTranslations[cacheKey] = browserApi.runtime.sendMessage({
-        type: "LIT_WORD_INFO",
-        payload: { word: normalizedWord }
-      }).finally(() => {
-        delete state.pendingTranslations[cacheKey];
-      });
-    }
-
-    return state.pendingTranslations[cacheKey].then((response) => {
-      if (!response?.ok) throw new Error(response?.error || "词典信息获取失败");
-
-      state.cache[cacheKey] = { status: "done", result: response.result };
-      state.wordCache[cacheKey] = state.cache[cacheKey];
-      saveRecentWordInfo(normalizedWord, response.result);
-      autoSaveVocabulary(normalizedWord, response.result);
-      if (state.activeWordKey === cacheKey) renderWordInfo(word);
-    }).catch((error) => {
-      if (isExtensionContextInvalidated(error)) {
-        handleRuntimeInvalidated();
-        return;
-      }
-      state.cache[cacheKey] = { status: "error", error: error?.message || String(error) };
-      state.wordCache[cacheKey] = state.cache[cacheKey];
-      if (state.activeWordKey === cacheKey) renderWordInfo(word);
-    });
+    return requestWordInfo(word);
   }
 
   async function fetchTranslation(cacheKey, mode, text) {
@@ -852,23 +824,28 @@
     const cacheKey = `word:${normalizedWord}`;
     state.activeWordKey = cacheKey;
     const cached = state.wordCache[cacheKey] || state.cache[cacheKey] || findRecentWordInfo(normalizedWord);
-    if (cached?.status === "done" || cached?.status === "loading") {
+    if (cached?.status === "done") {
       state.cache[cacheKey] = cached;
       state.wordCache[cacheKey] = cached;
-      if (cached.status === "done") autoSaveVocabulary(normalizedWord, cached.result);
+      autoSaveVocabulary(normalizedWord, cached.result);
       renderWordInfo(word);
       return;
     }
 
-    state.cache[cacheKey] = { status: "loading" };
-    state.wordCache[cacheKey] = state.cache[cacheKey];
+    if (!state.pendingWordInfo[cacheKey]) {
+      state.cache[cacheKey] = { status: "loading" };
+      state.wordCache[cacheKey] = state.cache[cacheKey];
+      state.pendingWordInfo[cacheKey] = browserApi.runtime.sendMessage({
+        type: "LIT_WORD_INFO",
+        payload: { word: normalizedWord }
+      }).finally(() => {
+        delete state.pendingWordInfo[cacheKey];
+      });
+    }
     renderWordInfo(word);
 
     try {
-      const response = await browserApi.runtime.sendMessage({
-      type: "LIT_WORD_INFO",
-        payload: { word: normalizedWord }
-      });
+      const response = await state.pendingWordInfo[cacheKey];
       if (!response?.ok) throw new Error(response?.error || "词典信息获取失败");
 
       state.cache[cacheKey] = { status: "done", result: response.result };
@@ -914,9 +891,9 @@
   }
 
   async function saveVocabularyManually(button) {
-    const word = normalizeWord(button.dataset.vocabularySave);
-    const cacheKey = `word:${word}`;
-    const cached = state.wordCache[cacheKey] || state.cache[cacheKey] || findRecentWordInfo(word);
+    const word = normalizeWordQuery(button.dataset.vocabularySave);
+    const cacheKey = `word:${normalizeWord(word)}`;
+    const cached = state.wordCache[cacheKey] || state.cache[cacheKey] || findRecentWordInfo(normalizeWord(word));
     if (!isEnglishWord(word) || cached?.status !== "done") return;
 
     button.disabled = true;
@@ -1038,14 +1015,14 @@
     }
 
     node.classList.remove("lit-error");
-    node.innerHTML = formatWordInfo(entry.result);
+    node.innerHTML = formatWordInfo(entry.result, word);
     requestAnimationFrame(() => keepPopoverInViewport());
   }
 
-  function formatWordInfo(info) {
+  function formatWordInfo(info, originalWord = "") {
     if (info?.raw && typeof info.raw === "string") return escapeHtml(info.raw);
     const speechUrls = normalizeSpeechUrls(info?.speechUrls);
-    const word = normalizeWord(info?.word);
+    const word = normalizeWordQuery(originalWord);
     const manualSaveButton = state.settings.vocabularyEnabled && state.settings.vocabularyAutoSave === false && isEnglishWord(word)
       ? `<button class="lit-vocabulary-save" type="button" data-vocabulary-save="${escapeHtml(word)}">收藏</button>`
       : "";

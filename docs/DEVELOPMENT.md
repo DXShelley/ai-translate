@@ -147,7 +147,7 @@ vocabularyAuthType
 vocabularyAuthToken
 ```
 
-`src/popup.js` 和 `src/content.js` 只在原始查询被识别为英文单词且查询成功后，依据 `vocabularyEnabled` 和 `vocabularyAutoSave` 调用 `LIT_SAVE_VOCABULARY`。中文输入走翻译；其他非英文输入不得请求英文词典或单词本。`src/background.js` 是唯一允许执行外部单词本 HTTP 请求的位置，并必须拒绝非英文词条。
+浏览器扩展中，`src/popup.js` 和 `src/content.js` 只在原始查询被识别为英文单词且查询成功后，依据 `vocabularyEnabled` 和 `vocabularyAutoSave` 调用 `LIT_SAVE_VOCABULARY`。中文输入走翻译；其他非英文输入不得请求英文词典或单词本。`src/background.js` 是唯一允许执行外部单词本 HTTP 请求的位置，并必须拒绝非英文词条。
 
 实现约束：
 
@@ -158,6 +158,7 @@ vocabularyAuthToken
 - 请求头必须是 JSON 对象。认证支持 `none`、`bearer`、`basic`；其他认证方式通过自定义请求头实现。
 - 开启 `settings.requestLogging` 时，以 `type: "vocabulary"` 写入 `requestLogs`，包含 URL、请求头、请求体、响应、状态码、耗时和错误；配置解析失败也必须写入错误日志。配置页日志详情必须展示 HTTP 状态码。保存前必须脱敏请求头中的 `authorization`、`apiKey`、`token`、`secret` 等字段。
 - 单词本配置会随全局配置导入和导出；新增字段时需要同步 `DEFAULT_CONFIG`、`normalizeSettings`、`readSettingsFromForm` 与 `GLOBAL_SETTING_FIELDS`。
+- VS Code 插件使用同名的 `aiTranslateHover.vocabulary*` 设置，并在 `package.json` 的 `AI Translate Hover: Vocabulary` 设置组中声明。`vscode-extension/extension.js` 在每次成功的英文词典查询后异步调用 `saveVocabulary`；即使词典信息来自缓存也必须调用一次。自动收藏关闭时，悬停 Markdown 在词条标题下方显示 `aiTranslateHover.saveVocabulary` 命令链接。该请求不得阻塞 Hover 返回，且仅接受英文单词。
 
 用户要求清空 Codex 会话时，只清理会话目录和索引文件：
 
@@ -457,6 +458,9 @@ Invoke-RestMethod -Uri "http://127.0.0.1:9222/json/new?chrome-extension://dgfhgm
 - 弹框输入单词回车后切到划词页面
 - 单词历史左右箭头可浏览历史查询
 - 单词重复查询走缓存
+- 单词本启用自动收藏时，每次英文单词查询（包括缓存命中和并发 pending 命中）各发送一次收藏请求
+- 单词本关闭自动收藏时，手动“收藏”使用用户原始英文查询；GET、POST、认证和无效模板分别按配置预期处理
+- VS Code 单词本自动收藏不阻塞 Hover；关闭自动收藏时，“收藏”链接位于词条标题下方，设置显示在 `AI Translate Hover: Vocabulary` 分组
 - 弹框可拖动
 - 鼠标移出弹框关闭
 - 弹框在窗口边缘仍完整可见

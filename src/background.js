@@ -1469,7 +1469,7 @@ function resolveTargetLanguage(text, settings) {
   if (translationSettings.translationMode === "manual") {
     return translationSettings.targetLanguage;
   }
-  return isMostlyChinese(text) ? "English" : "简体中文";
+  return isMostlyChinese(text) ? "English" : translationSettings.targetLanguage;
 }
 
 function resolveSourceLanguage(settings) {

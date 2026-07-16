@@ -61,6 +61,14 @@ function activate(context) {
   const playPronunciationCommand = vscode.commands.registerCommand("aiTranslateHover.playPronunciation", (audioUrl, label) =>
     playPronunciation(audioUrl, label)
   );
+  const saveVocabularyCommand = vscode.commands.registerCommand("aiTranslateHover.saveVocabulary", async (word, wordInfo) => {
+    try {
+      await saveVocabulary(word, wordInfo);
+      vscode.window.showInformationMessage(`AI Translate: saved ${word} to vocabulary.`);
+    } catch (error) {
+      vscode.window.showErrorMessage(`AI Translate: could not save vocabulary: ${formatError(error)}`);
+    }
+  });
   const updateKeyboardTriggerContext = () =>
     vscode.commands.executeCommand("setContext", "aiTranslateHover.keyboardTriggerEnabled", isKeyboardTriggerEnabled());
   updateKeyboardTriggerContext();
@@ -70,7 +78,7 @@ function activate(context) {
     }
   });
 
-  context.subscriptions.push(provider, command, openSettingsCommand, playPronunciationCommand, configurationListener);
+  context.subscriptions.push(provider, command, openSettingsCommand, playPronunciationCommand, saveVocabularyCommand, configurationListener);
 }
 
 async function provideDelayedHover(document, range, text, token) {
@@ -79,13 +87,19 @@ async function provideDelayedHover(document, range, text, token) {
   if (token.isCancellationRequested || !selectionStillMatches(document, range, text)) return undefined;
 
   const markdown = new vscode.MarkdownString();
-  markdown.isTrusted = { enabledCommands: ["aiTranslateHover.playPronunciation"] };
+  markdown.isTrusted = { enabledCommands: ["aiTranslateHover.playPronunciation", "aiTranslateHover.saveVocabulary"] };
   markdown.appendMarkdown(`**${escapeMarkdown(text)}**\n\n`);
   try {
     const wordInfo = ENGLISH_WORD_PATTERN.test(text) ? await getWordInfo(text, token).catch(() => null) : null;
     const translation = wordInfo ? "" : await translate(text, token);
     if (token.isCancellationRequested || !selectionStillMatches(document, range, text)) return undefined;
-    appendDictionaryMarkdown(markdown, wordInfo, translation);
+    appendDictionaryMarkdown(markdown, wordInfo, translation, config);
+    if (wordInfo && config.vocabularyEnabled && config.vocabularyAutoSave) {
+      // Each lookup is recorded, including lookups whose dictionary result came from cache.
+      saveVocabulary(text, wordInfo).catch((saveError) => {
+        console.warn("AI Translate could not auto-save vocabulary:", formatError(saveError));
+      });
+    }
   } catch (error) {
     if (token.isCancellationRequested) return undefined;
     markdown.appendMarkdown(`Translation failed: ${escapeMarkdown(formatError(error))}`);
@@ -93,8 +107,11 @@ async function provideDelayedHover(document, range, text, token) {
   return new vscode.Hover(markdown, range);
 }
 
-function appendDictionaryMarkdown(markdown, wordInfo, translation) {
+function appendDictionaryMarkdown(markdown, wordInfo, translation, config = {}) {
   if (wordInfo) {
+    if (config.vocabularyEnabled && !config.vocabularyAutoSave) {
+      markdown.appendMarkdown(`${toVocabularyCommandLink(wordInfo.word, wordInfo)}\n\n`);
+    }
     const pronunciations = [];
     if (wordInfo.phoneticUK) pronunciations.push(`英 /${escapeMarkdown(wordInfo.phoneticUK)}/`);
     if (wordInfo.speechUrls.uk) pronunciations.push(toPronunciationCommandLink("英式发音", wordInfo.speechUrls.uk));
@@ -107,6 +124,11 @@ function appendDictionaryMarkdown(markdown, wordInfo, translation) {
     return;
   }
   markdown.appendMarkdown(escapeMarkdown(translation));
+}
+
+function toVocabularyCommandLink(word, wordInfo) {
+  const args = encodeURIComponent(JSON.stringify([String(word || "").trim(), wordInfo || {}]));
+  return `[收藏](command:aiTranslateHover.saveVocabulary?${args})`;
 }
 
 function appendDefinitionList(markdown, title, definitions) {
@@ -419,8 +441,81 @@ function getConfig() {
     builtinApiEnabled: settings.get("builtinApiEnabled") !== false,
     trustPronunciationDomainOnActivate: settings.get("trustPronunciationDomainOnActivate") !== false,
     hoverDelayMs: Math.max(1000, Number(settings.get("hoverDelayMs")) || 1000),
-    timeoutMs: Math.max(1000, Number(settings.get("timeoutMs")) || 45000)
+    timeoutMs: Math.max(1000, Number(settings.get("timeoutMs")) || 45000),
+    vocabularyEnabled: settings.get("vocabularyEnabled") === true,
+    vocabularyAutoSave: settings.get("vocabularyAutoSave") !== false,
+    vocabularyUrl: String(settings.get("vocabularyUrl") || "").trim(),
+    vocabularyMethod: settings.get("vocabularyMethod") === "GET" ? "GET" : "POST",
+    vocabularyHeaders: String(settings.get("vocabularyHeaders") || "{}"),
+    vocabularyAuthType: ["none", "bearer", "basic"].includes(settings.get("vocabularyAuthType")) ? settings.get("vocabularyAuthType") : "none",
+    vocabularyAuthToken: String(settings.get("vocabularyAuthToken") || ""),
+    vocabularyBodyTemplate: String(settings.get("vocabularyBodyTemplate") || "")
   };
+}
+
+async function saveVocabulary(word, wordInfo, config = getConfig()) {
+  if (!config.vocabularyEnabled) throw new Error("Vocabulary adapter is disabled.");
+  if (!config.vocabularyUrl) throw new Error("Set AI Translate Hover: Vocabulary Url first.");
+  const normalizedWord = String(word || wordInfo?.word || "").trim();
+  if (!ENGLISH_WORD_PATTERN.test(normalizedWord)) throw new Error("Vocabulary only supports English words.");
+
+  const variables = buildVocabularyVariables(normalizedWord, wordInfo);
+  const headers = parseVocabularyHeaders(config.vocabularyHeaders);
+  applyVocabularyAuth(headers, config);
+  let url = replaceVocabularyTokens(config.vocabularyUrl, variables);
+  let body;
+  const template = replaceVocabularyTemplate(config.vocabularyBodyTemplate, variables);
+  if (config.vocabularyMethod === "GET") {
+    const params = parseVocabularyJson(template, "Vocabulary GET template must be a JSON object.");
+    if (Array.isArray(params) || !params || typeof params !== "object") throw new Error("Vocabulary GET template must be a JSON object.");
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) query.set(key, typeof value === "string" ? value : JSON.stringify(value));
+    if (query.size) url += `${url.includes("?") ? "&" : "?"}${query}`;
+  } else {
+    body = template.trim();
+    if (body && !Object.keys(headers).some((key) => key.toLowerCase() === "content-type")) headers["Content-Type"] = "application/json";
+  }
+  const response = await fetchWithTimeout(url, { method: config.vocabularyMethod, headers, body }, config.timeoutMs);
+  const responseText = await response.text();
+  if (!response.ok) throw new Error(`Vocabulary request failed (${response.status}): ${responseText || response.statusText}`);
+  return { status: response.status };
+}
+
+function buildVocabularyVariables(word, wordInfo = {}) {
+  return {
+    word,
+    definition: (Array.isArray(wordInfo.definitionsZh) ? wordInfo.definitionsZh : []).filter(Boolean).join("; "),
+    phoneticUS: wordInfo.phoneticUS || "",
+    phoneticUK: wordInfo.phoneticUK || ""
+  };
+}
+
+function replaceVocabularyTokens(value, variables) {
+  return String(value || "").replace(/{{\s*(word|definition|phoneticUS|phoneticUK)\s*}}/g, (_, key) => String(variables[key] || ""));
+}
+
+function replaceVocabularyTemplate(value, variables) {
+  const text = String(value || "");
+  return text.replace(/{{\s*(word|definition|phoneticUS|phoneticUK)\s*}}/g, (match, key, offset) => {
+    const replacement = String(variables[key] || "");
+    return text[offset - 1] === '"' && text[offset + match.length] === '"' ? JSON.stringify(replacement).slice(1, -1) : replacement;
+  });
+}
+
+function parseVocabularyJson(value, errorMessage) {
+  try { return JSON.parse(value); } catch { throw new Error(errorMessage); }
+}
+
+function parseVocabularyHeaders(value) {
+  const headers = parseVocabularyJson(value || "{}", "Vocabulary headers must be a JSON object.");
+  if (!headers || typeof headers !== "object" || Array.isArray(headers)) throw new Error("Vocabulary headers must be a JSON object.");
+  return Object.fromEntries(Object.entries(headers).map(([key, item]) => [String(key), String(item)]));
+}
+
+function applyVocabularyAuth(headers, config) {
+  const token = String(config.vocabularyAuthToken || "").trim();
+  if (!token || config.vocabularyAuthType === "none") return;
+  headers.Authorization = config.vocabularyAuthType === "basic" ? `Basic ${Buffer.from(token, "utf8").toString("base64")}` : `Bearer ${token}`;
 }
 
 function normalizeTriggerMode(value) {
@@ -599,6 +694,14 @@ module.exports = {
   createPronunciationPlayerHtml,
   normalizeWordForMatch,
   normalizeTriggerMode,
+  appendDictionaryMarkdown,
+  toVocabularyCommandLink,
+  saveVocabulary,
+  buildVocabularyVariables,
+  replaceVocabularyTokens,
+  replaceVocabularyTemplate,
+  parseVocabularyHeaders,
+  applyVocabularyAuth,
   fetchWithTimeout,
   readCache,
   writeCache
