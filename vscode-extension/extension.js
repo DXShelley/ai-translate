@@ -482,21 +482,44 @@ async function saveVocabulary(word, wordInfo, config = getConfig()) {
 }
 
 function buildVocabularyVariables(word, wordInfo = {}) {
+  const definitionZh = (Array.isArray(wordInfo.definitionsZh) ? wordInfo.definitionsZh : []).filter(Boolean).join("；");
+  const definitionEn = (Array.isArray(wordInfo.definitionsEn) ? wordInfo.definitionsEn : []).filter(Boolean).join("; ");
+  const legacyTranslation = (Array.isArray(wordInfo.definitionsZh) ? wordInfo.definitionsZh : []).filter(Boolean).join("; ");
   return {
     word,
-    definition: (Array.isArray(wordInfo.definitionsZh) ? wordInfo.definitionsZh : []).filter(Boolean).join("; "),
+    definition: legacyTranslation,
     phoneticUS: wordInfo.phoneticUS || "",
-    phoneticUK: wordInfo.phoneticUK || ""
+    phoneticUK: wordInfo.phoneticUK || "",
+    original: word,
+    translation: legacyTranslation,
+    language: "en",
+    phoneticUs: formatVocabularyPhonetic(wordInfo.phoneticUS),
+    phoneticUk: formatVocabularyPhonetic(wordInfo.phoneticUK),
+    audioUsUrl: wordInfo.speechUrls?.us || "",
+    audioUkUrl: wordInfo.speechUrls?.uk || "",
+    example: "",
+    source: "youdao-mobile",
+    headword: word,
+    phonetic: formatVocabularyPhonetic(wordInfo.phoneticUS || wordInfo.phoneticUK),
+    definitionZh,
+    definitionEn
   };
 }
 
+function formatVocabularyPhonetic(value) {
+  const phonetic = String(value || "").trim().replace(/^\/+|\/+$/g, "");
+  return phonetic ? `/${phonetic}/` : "";
+}
+
+const VOCABULARY_TEMPLATE_VARIABLES = "word|definition|phoneticUS|phoneticUK|original|translation|language|phoneticUs|phoneticUk|audioUsUrl|audioUkUrl|example|source|headword|phonetic|definitionZh|definitionEn";
+
 function replaceVocabularyTokens(value, variables) {
-  return String(value || "").replace(/{{\s*(word|definition|phoneticUS|phoneticUK)\s*}}/g, (_, key) => String(variables[key] || ""));
+  return String(value || "").replace(new RegExp(`{{\\s*(${VOCABULARY_TEMPLATE_VARIABLES})\\s*}}`, "g"), (_, key) => String(variables[key] || ""));
 }
 
 function replaceVocabularyTemplate(value, variables) {
   const text = String(value || "");
-  return text.replace(/{{\s*(word|definition|phoneticUS|phoneticUK)\s*}}/g, (match, key, offset) => {
+  return text.replace(new RegExp(`{{\\s*(${VOCABULARY_TEMPLATE_VARIABLES})\\s*}}`, "g"), (match, key, offset) => {
     const replacement = String(variables[key] || "");
     return text[offset - 1] === '"' && text[offset + match.length] === '"' ? JSON.stringify(replacement).slice(1, -1) : replacement;
   });
@@ -698,6 +721,7 @@ module.exports = {
   toVocabularyCommandLink,
   saveVocabulary,
   buildVocabularyVariables,
+  formatVocabularyPhonetic,
   replaceVocabularyTokens,
   replaceVocabularyTemplate,
   parseVocabularyHeaders,

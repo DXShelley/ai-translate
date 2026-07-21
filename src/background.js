@@ -40,10 +40,10 @@ const DEFAULT_CONFIG = {
     vocabularyEnabled: false,
     vocabularyAutoSave: true,
     vocabularyMethod: "POST",
-    vocabularyUrl: "",
+    vocabularyUrl: "http://127.0.0.1:3000/api/v1/words",
     vocabularyHeaders: "{\n  \"Content-Type\": \"application/json\"\n}",
-    vocabularyBodyTemplate: "{\n  \"word\": \"{{word}}\",\n  \"definition\": \"{{definition}}\",\n  \"phoneticUS\": \"{{phoneticUS}}\",\n  \"phoneticUK\": \"{{phoneticUK}}\"\n}",
-    vocabularyAuthType: "none",
+    vocabularyBodyTemplate: "{\n  \"headword\": \"{{headword}}\",\n  \"phoneticUs\": \"{{phoneticUs}}\",\n  \"phoneticUk\": \"{{phoneticUk}}\",\n  \"definitionZh\": \"{{definitionZh}}\",\n  \"definitionEn\": \"{{definitionEn}}\"\n}",
+    vocabularyAuthType: "bearer",
     vocabularyAuthToken: "",
     popupLanguage: "all",
     translationMode: "auto-zh-en",
@@ -392,14 +392,40 @@ async function saveVocabulary(payload) {
 }
 
 function buildVocabularyVariables(word, info) {
-  const definition = (Array.isArray(info.partsOfSpeech) ? info.partsOfSpeech.map((item) => [item?.pos, item?.meaning].filter(Boolean).join(" ")) : []).filter(Boolean).join("; ") || (info.definitionsZh || []).join("; ");
-  return { word, definition, phoneticUS: info.phoneticUS || "", phoneticUK: info.phoneticUK || "" };
+  const definitionZh = (Array.isArray(info.partsOfSpeech) ? info.partsOfSpeech.map((item) => [item?.pos, item?.meaning].filter(Boolean).join(" ")) : []).filter(Boolean).join("；") || (info.definitionsZh || []).filter(Boolean).join("；");
+  const definitionEn = (info.definitionsEn || []).filter(Boolean).join("; ");
+  const legacyTranslation = (Array.isArray(info.partsOfSpeech) ? info.partsOfSpeech.map((item) => [item?.pos, item?.meaning].filter(Boolean).join(" ")) : []).filter(Boolean).join("; ") || (info.definitionsZh || []).filter(Boolean).join("; ");
+  const example = Array.isArray(info.examples) ? info.examples.find((item) => item?.en || item?.zh) : null;
+  return {
+    word,
+    definition: legacyTranslation,
+    phoneticUS: info.phoneticUS || "",
+    phoneticUK: info.phoneticUK || "",
+    original: word,
+    translation: legacyTranslation,
+    language: "en",
+    phoneticUs: formatVocabularyPhonetic(info.phoneticUS),
+    phoneticUk: formatVocabularyPhonetic(info.phoneticUK),
+    audioUsUrl: info.speechUrls?.us || "",
+    audioUkUrl: info.speechUrls?.uk || "",
+    example: example?.en || example?.zh || "",
+    source: info.raw?.source || "ai-translate",
+    headword: word,
+    phonetic: formatVocabularyPhonetic(info.phoneticUS || info.phoneticUK),
+    definitionZh,
+    definitionEn
+  };
+}
+function formatVocabularyPhonetic(value) {
+  const phonetic = String(value || "").trim().replace(/^\/+|\/+$/g, "");
+  return phonetic ? `/${phonetic}/` : "";
 }
 function isEnglishVocabularyWord(word) { return /^[A-Za-z][A-Za-z'-]*$/.test(String(word || "").trim()); }
-function replaceVocabularyTokens(value, variables) { return String(value || "").replace(/{{\s*(word|definition|phoneticUS|phoneticUK)\s*}}/g, (_, key) => String(variables[key] || "")); }
+const VOCABULARY_TEMPLATE_VARIABLES = "word|definition|phoneticUS|phoneticUK|original|translation|language|phoneticUs|phoneticUk|audioUsUrl|audioUkUrl|example|source|headword|phonetic|definitionZh|definitionEn";
+function replaceVocabularyTokens(value, variables) { return String(value || "").replace(new RegExp(`{{\\s*(${VOCABULARY_TEMPLATE_VARIABLES})\\s*}}`, "g"), (_, key) => String(variables[key] || "")); }
 function replaceVocabularyTemplate(value, variables) {
   const text = String(value || "");
-  return text.replace(/{{\s*(word|definition|phoneticUS|phoneticUK)\s*}}/g, (match, key, offset) => {
+  return text.replace(new RegExp(`{{\\s*(${VOCABULARY_TEMPLATE_VARIABLES})\\s*}}`, "g"), (match, key, offset) => {
     const replacement = String(variables[key] || "");
     return text[offset - 1] === '"' && text[offset + match.length] === '"'
       ? JSON.stringify(replacement).slice(1, -1)
