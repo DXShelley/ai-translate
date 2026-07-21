@@ -22,6 +22,34 @@ assert.equal(extension.isMostlyChinese("你好你好 world"), true);
 assert.equal(extension.isMostlyChinese("hello world"), false);
 assert.equal(extension.joinUrl("http://localhost:1234/v1/", "/chat/completions"), "http://localhost:1234/v1/chat/completions");
 assert.equal(extension.stripThinking("<think>hidden</think>visible"), "visible");
+assert.deepEqual(
+  extension.buildVocabularyVariables("hello", {
+    definitionsZh: ["你好", "问候"],
+    phoneticUS: "həˈloʊ",
+    phoneticUK: "həˈləʊ",
+    speechUrls: { us: "https://example.com/us.mp3", uk: "https://example.com/uk.mp3" }
+  }),
+  {
+    word: "hello",
+    definition: "你好; 问候",
+    phoneticUS: "həˈloʊ",
+    phoneticUK: "həˈləʊ",
+    original: "hello",
+    translation: "你好; 问候",
+    language: "en",
+    phoneticUs: "/həˈloʊ/",
+    phoneticUk: "/həˈləʊ/",
+    audioUsUrl: "https://example.com/us.mp3",
+    audioUkUrl: "https://example.com/uk.mp3",
+    example: "",
+    source: "youdao-mobile",
+    headword: "hello",
+    phonetic: "/həˈloʊ/",
+    definitionZh: "你好；问候",
+    definitionEn: ""
+  }
+);
+assert.equal(extension.replaceVocabularyTemplate('{"word":"{{word}}"}', { word: "hello" }), '{"word":"hello"}');
 assert.equal(
   extension.parseYoudaoMobileTranslation('<ul id="translateResult"><li>翻译 &amp; 释义</li><li><b>第二行</b></li></ul>'),
   "翻译 & 释义\n第二行"
@@ -160,10 +188,11 @@ async function verifyVocabularySave() {
       assert.equal(request.headers.authorization, "Bearer vocabulary-token");
       assert.equal(request.headers["content-type"], "application/json");
       assert.deepEqual(JSON.parse(body), {
-        word: "translation",
-        definition: "翻译",
-        phoneticUS: "tranz",
-        phoneticUK: "trans"
+        headword: "translation",
+        phoneticUs: "/tranz/",
+        phoneticUk: "/trans/",
+        definitionZh: "翻译",
+        definitionEn: "to render text in another language"
       });
       response.writeHead(201);
       response.end();
@@ -172,7 +201,10 @@ async function verifyVocabularySave() {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     const result = await extension.saveVocabulary("translation", {
-      definitionsZh: ["翻译"], phoneticUS: "tranz", phoneticUK: "trans"
+      definitionsZh: ["翻译"],
+      definitionsEn: ["to render text in another language"],
+      phoneticUS: "tranz",
+      phoneticUK: "trans"
     }, {
       vocabularyEnabled: true,
       vocabularyUrl: `http://127.0.0.1:${server.address().port}/vocabulary`,
@@ -180,7 +212,7 @@ async function verifyVocabularySave() {
       vocabularyHeaders: "{}",
       vocabularyAuthType: "bearer",
       vocabularyAuthToken: "vocabulary-token",
-      vocabularyBodyTemplate: "{\"word\":\"{{word}}\",\"definition\":\"{{definition}}\",\"phoneticUS\":\"{{phoneticUS}}\",\"phoneticUK\":\"{{phoneticUK}}\"}",
+      vocabularyBodyTemplate: "{\"headword\":\"{{headword}}\",\"phoneticUs\":\"{{phoneticUs}}\",\"phoneticUk\":\"{{phoneticUk}}\",\"definitionZh\":\"{{definitionZh}}\",\"definitionEn\":\"{{definitionEn}}\"}",
       timeoutMs: 1000
     });
     assert.deepEqual(result, { status: 201 });

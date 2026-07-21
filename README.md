@@ -4,10 +4,10 @@
 
 项目包含两类插件：浏览器扩展与 VS Code 扩展。浏览器扩展提供网页划词、句子和段落翻译；VS Code 扩展面向中文用户阅读英文 Skill 文档，提供选词悬停词典和翻译辅助。
 
-`v6.0.1` 发布产物：
+`v6.0.2` 发布产物：
 
 - 浏览器：`AI-Translate-chrome.zip`、`AI-Translate-edge.zip`、`AI-Translate-firefox.zip`
-- VS Code：[vscode-extension/](vscode-extension/README.md) 构建生成 `dist/ai-translate-hover-6.0.1.vsix`，可通过 `Install from VSIX...` 安装。
+- VS Code：[vscode-extension/](vscode-extension/README.md) 构建生成 `dist/ai-translate-hover-6.0.2.vsix`，可通过 `Install from VSIX...` 安装。
 
 VS Code 扩展最低兼容版本为 `1.85.0`，完整兼容性说明见 [`vscode-extension/README.md`](vscode-extension/README.md)。
 
@@ -133,20 +133,21 @@ POST http://localhost:1234/v1/chat/completions
 
 单词本配置项如下：
 
-- API 地址：外部单词本接收请求的完整 URL。
+- API 地址：默认 `http://127.0.0.1:3000/api/v1/words`。
 - 请求方法：`POST` 或 `GET`。
 - 请求头：JSON 对象，可放置任意服务所需的自定义头。
 - 认证方式：无认证、Bearer Token，或 Basic（认证凭据填写 `用户名:密码`）。也可直接在请求头中配置其他认证机制。
-- 请求体 / GET 参数模板：支持 `{{word}}`、`{{definition}}`、`{{phoneticUS}}`、`{{phoneticUK}}`。`GET` 模板必须是 JSON 对象，并会转换为 URL 查询参数；`POST` 模板按原文本作为请求体发送。
+- 请求体 / GET 参数模板：默认支持 `{{headword}}`、`{{phoneticUs}}`、`{{phoneticUk}}`、`{{definitionZh}}`、`{{definitionEn}}`；仍兼容 `{{word}}`、`{{definition}}`、`{{phoneticUS}}`、`{{phoneticUK}}` 以及后续的通用旧变量。`GET` 模板必须是 JSON 对象，并会转换为 URL 查询参数；`POST` 模板按原文本作为请求体发送。
 
 默认 `POST` 模板：
 
 ```json
 {
-  "word": "{{word}}",
-  "definition": "{{definition}}",
-  "phoneticUS": "{{phoneticUS}}",
-  "phoneticUK": "{{phoneticUK}}"
+  "headword": "{{headword}}",
+  "phoneticUs": "{{phoneticUs}}",
+  "phoneticUk": "{{phoneticUk}}",
+  "definitionZh": "{{definitionZh}}",
+  "definitionEn": "{{definitionEn}}"
 }
 ```
 

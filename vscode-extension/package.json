@@ -3,7 +3,7 @@
   "displayName": "AI Translate Hover",
   "description": "Translate a selected word after hovering it for one second.",
   "icon": "media/icon.png",
-  "version": "6.0.1",
+  "version": "6.0.2",
   "publisher": "DxShelley",
   "license": "MIT",
   "author": {
@@ -123,7 +123,7 @@
         },
         "aiTranslateHover.vocabularyUrl": {
           "type": "string",
-          "default": "",
+          "default": "http://127.0.0.1:3000/api/v1/words",
           "description": "Full URL of the external vocabulary API."
         },
         "aiTranslateHover.vocabularyMethod": {
@@ -140,7 +140,7 @@
         "aiTranslateHover.vocabularyAuthType": {
           "type": "string",
           "enum": ["none", "bearer", "basic"],
-          "default": "none",
+          "default": "bearer",
           "description": "Authentication method for the external vocabulary API."
         },
         "aiTranslateHover.vocabularyAuthToken": {
@@ -150,8 +150,8 @@
         },
         "aiTranslateHover.vocabularyBodyTemplate": {
           "type": "string",
-          "default": "{\n  \"word\": \"{{word}}\",\n  \"definition\": \"{{definition}}\",\n  \"phoneticUS\": \"{{phoneticUS}}\",\n  \"phoneticUK\": \"{{phoneticUK}}\"\n}",
-          "description": "POST body or GET parameter JSON template. Supports {{word}}, {{definition}}, {{phoneticUS}}, and {{phoneticUK}}."
+          "default": "{\n  \"headword\": \"{{headword}}\",\n  \"phoneticUs\": \"{{phoneticUs}}\",\n  \"phoneticUk\": \"{{phoneticUk}}\",\n  \"definitionZh\": \"{{definitionZh}}\",\n  \"definitionEn\": \"{{definitionEn}}\"\n}",
+          "description": "POST body or GET parameter JSON template. Defaults to {{headword}}, {{phoneticUs}}, {{phoneticUk}}, {{definitionZh}}, and {{definitionEn}}; legacy variables remain supported."
         }
         }
       }
