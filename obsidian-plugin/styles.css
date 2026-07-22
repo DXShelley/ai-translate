@@ -158,6 +158,10 @@
   margin-top: 0.25rem;
 }
 
+.ai-translate-setting-textarea {
+  min-height: 72px;
+}
+
 .ai-translate-error {
   color: var(--text-error);
   background: var(--background-modifier-error);
@@ -177,7 +181,7 @@
   .ai-translate-modal *,
   .ai-translate-modal *::before,
   .ai-translate-modal *::after {
-    transition-duration: 0ms !important;
-    animation-duration: 0ms !important;
+    transition-duration: 0ms;
+    animation-duration: 0ms;
   }
 }

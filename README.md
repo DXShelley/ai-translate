@@ -1,5 +1,7 @@
 # AI Translate
 
+AI Translate is a suite of browser, VS Code, and Obsidian plugins for dictionary lookup and selected-text translation. The Obsidian plugin also supports optional external vocabulary API integration.
+
 一个浏览器扩展原型，用于在网页中进行本地或 OpenAI 兼容模型翻译。扩展重点支持划词、句子、段落三种粒度，并在同一弹框内复用上下文和已返回结果，减少重复请求。
 
 项目包含两类插件：浏览器扩展与 VS Code 扩展。浏览器扩展提供网页划词、句子和段落翻译；VS Code 扩展面向中文用户阅读英文 Skill 文档，提供选词悬停词典和翻译辅助。
@@ -10,6 +12,24 @@
 - VS Code：[vscode-extension/](vscode-extension/README.md) 构建生成 `dist/ai-translate-hover-7.0.1.vsix`，可通过 `Install from VSIX...` 安装。
 
 VS Code 扩展最低兼容版本为 `1.85.0`，完整兼容性说明见 [`vscode-extension/README.md`](vscode-extension/README.md)。
+
+## 发布构建
+
+所有插件必须保持相同的主版本号。全平台发布构建 Chrome、Edge、Firefox、VS Code 与 Obsidian：
+
+```sh
+npm run release:all
+```
+
+浏览器和 VS Code 产物写入 `dist/release/all/<version>/`，GitHub Release 使用 `v<version>` 标签；Obsidian 产物同时写入 `dist/release/obsidian/<version>/`，需要创建单独的无 `v` 前缀 Release。
+
+Obsidian 可独立发布：
+
+```sh
+npm run release:obsidian
+```
+
+产物写入 `dist/release/obsidian/<version>/`。该 GitHub Release 标签必须使用 `<version>`，不能带 `v` 前缀，并且只上传 `main.js`、`manifest.json`、`styles.css`。Obsidian 的补丁版本可独立递增，但主版本号必须与其他插件一致。
 
 VS Code 扩展主要面向中文用户阅读英文 Skill 文档的场景，提供选词悬停词典和翻译辅助。
 

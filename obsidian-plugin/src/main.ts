@@ -1,4 +1,5 @@
 import { App, Editor, Modal, Notice, Plugin, PluginSettingTab, Setting, requestUrl, setIcon } from "obsidian";
+import vocabularyModule from "../../shared/vocabulary.js";
 
 type VocabularyApi = {
   buildPayload(word: string, info: WordInfo): Record<string, string>;
@@ -7,9 +8,9 @@ type VocabularyApi = {
   applyAuth(headers: Record<string, string>, authType: string, credential: string, encodeBase64: (value: string) => string): void;
   addIdempotencyKey(headers: Record<string, string>, randomUUID: () => string): void;
   createSaveCoordinator(): { run<T>(key: string, save: () => Promise<T>): Promise<T> };
-  toQueryEntries(payload: Record<string, unknown>): Array<[string, string]>;
+  toQueryEntries(payload: Record<string, unknown>): string[][];
 };
-const vocabulary = require("../../shared/vocabulary.js") as VocabularyApi;
+const vocabulary = vocabularyModule as VocabularyApi;
 
 const ENGLISH_WORD = /^[A-Za-z][A-Za-z'-]*$/;
 const WORD_BOOK_API_URL = "http://127.0.0.1:3000/api/v1/words";
@@ -163,7 +164,7 @@ class LookupModal extends Modal {
     const input = form.createEl("input", { type: "text", placeholder: "输入单词或文本" });
     input.setAttr("aria-label", "输入单词或待翻译文本");
     input.addEventListener("keydown", (event) => { if (event.key === "Enter") { this.close(); void this.plugin.lookup(input.value); } });
-    setTimeout(() => input.focus(), 0);
+    window.setTimeout(() => input.focus(), 0);
   }
 }
 
@@ -201,8 +202,8 @@ class ResultModal extends Modal {
   renderTranslation(translation: string) {
     this.contentEl.empty();
     const section = this.contentEl.createDiv({ cls: "ai-translate-section ai-translate-translation" });
-    section.createEl("div", { text: "翻译", cls: "ai-translate-section-title" });
-    section.createEl("div", { text: translation, cls: "ai-translate-result" });
+    section.createDiv({ text: "翻译", cls: "ai-translate-section-title" });
+    section.createDiv({ text: translation, cls: "ai-translate-result" });
   }
   renderWord(info: WordInfo) {
     this.contentEl.empty();
@@ -225,14 +226,14 @@ class AITranslateSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: AITranslatePlugin) { super(app, plugin); }
   display() {
     const { containerEl } = this; containerEl.empty();
-    containerEl.createEl("h2", { text: "AI Translate" });
+    new Setting(containerEl).setName("AI Translate").setHeading();
     new Setting(containerEl).setName("内置有道服务").setDesc("优先使用有道移动词典和翻译；不可用时使用 OpenAI 兼容接口。").addToggle((toggle) => toggle.setValue(this.plugin.settings.builtinApiEnabled).onChange(async (value) => { this.plugin.settings.builtinApiEnabled = value; await this.plugin.saveSettings(); }));
     textSetting(containerEl, "API Base URL", "OpenAI 兼容 API，例如 http://localhost:1234/v1", this.plugin.settings.baseUrl, async (value) => { this.plugin.settings.baseUrl = value; await this.plugin.saveSettings(); });
     textSetting(containerEl, "Endpoint Path", "通常为 /chat/completions", this.plugin.settings.endpointPath, async (value) => { this.plugin.settings.endpointPath = value; await this.plugin.saveSettings(); });
     textSetting(containerEl, "Model", "内置服务不可用时使用的模型", this.plugin.settings.model, async (value) => { this.plugin.settings.model = value; await this.plugin.saveSettings(); });
     textSetting(containerEl, "API Key", "可选", this.plugin.settings.apiKey, async (value) => { this.plugin.settings.apiKey = value; await this.plugin.saveSettings(); }, true);
     textSetting(containerEl, "目标语言", "非中文文本的翻译目标", this.plugin.settings.targetLanguage, async (value) => { this.plugin.settings.targetLanguage = value; await this.plugin.saveSettings(); });
-    containerEl.createEl("h3", { text: "外部单词本" });
+    new Setting(containerEl).setName("外部单词本").setHeading();
     new Setting(containerEl).setName("启用单词本适配").setDesc("仅提交英文单词查询结果；请求失败不影响查词。").addToggle((toggle) => toggle.setValue(this.plugin.settings.vocabularyEnabled).onChange(async (value) => { this.plugin.settings.vocabularyEnabled = value; await this.plugin.saveSettings(); this.display(); }));
     if (!this.plugin.settings.vocabularyEnabled) return;
     new Setting(containerEl).setName("查询后自动收藏").setDesc("关闭后，在查词结果中手动收藏。").addToggle((toggle) => toggle.setValue(this.plugin.settings.vocabularyAutoSave).onChange(async (value) => { this.plugin.settings.vocabularyAutoSave = value; await this.plugin.saveSettings(); }));
@@ -245,12 +246,12 @@ class AITranslateSettingTab extends PluginSettingTab {
   }
 }
 
-function textSetting(container: HTMLElement, name: string, desc: string, value: string, onChange: (value: string) => Promise<void>, password = false, textarea = false) { return new Setting(container).setName(name).setDesc(desc).addText((text) => { text.setValue(value).setPlaceholder(value).onChange(onChange); text.inputEl.type = password ? "password" : "text"; if (textarea) text.inputEl.style.minHeight = "72px"; }); }
+function textSetting(container: HTMLElement, name: string, desc: string, value: string, onChange: (value: string) => Promise<void>, password = false, textarea = false) { return new Setting(container).setName(name).setDesc(desc).addText((text) => { text.setValue(value).setPlaceholder(value).onChange(onChange); text.inputEl.type = password ? "password" : "text"; if (textarea) text.inputEl.addClass("ai-translate-setting-textarea"); }); }
 function addPronunciation(parent: HTMLElement, label: string, phonetic: string, audioUrl: string) {
   if (!phonetic && !audioUrl) return;
   const item = parent.createDiv({ cls: "ai-translate-pronunciation-item" });
-  item.createEl("span", { text: label, cls: "ai-translate-pronunciation-label" });
-  if (phonetic) item.createEl("span", { text: `/${phonetic}/`, cls: "ai-translate-phonetic" });
+  item.createSpan({ text: label, cls: "ai-translate-pronunciation-label" });
+  if (phonetic) item.createSpan({ text: `/${phonetic}/`, cls: "ai-translate-phonetic" });
   if (audioUrl) {
     const play = item.createEl("button", { cls: "clickable-icon ai-translate-audio-button" });
     play.setAttr("aria-label", `播放${label}式发音`);
@@ -262,12 +263,12 @@ function addPronunciation(parent: HTMLElement, label: string, phonetic: string, 
 function appendList(parent: HTMLElement, title: string, values: string[], language: "zh" | "en") {
   if (!values.length) return;
   const section = parent.createDiv({ cls: `ai-translate-section ai-translate-section-${language}` });
-  section.createEl("div", { text: title, cls: "ai-translate-section-title" });
+  section.createDiv({ text: title, cls: "ai-translate-section-title" });
   const list = section.createEl("ul", { cls: "ai-translate-definition-list" });
   values.slice(0, 8).forEach((value) => list.createEl("li", { text: value }));
 }
 async function requestYoudaoTranslation(text: string) { const result = await requestUrl({ url: "https://mobile.youdao.com/translate", method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept-Language": "zh-CN,zh;q=0.9" }, body: new URLSearchParams({ inputtext: text, type: "AUTO" }).toString(), throw: false }); if (result.status !== 200) return ""; const doc = new DOMParser().parseFromString(result.text, "text/html"); return Array.from(doc.querySelectorAll("#translateResult li")).map((item) => item.textContent?.trim() || "").filter(Boolean).join("\n"); }
-async function requestYoudaoWordInfo(word: string): Promise<WordInfo | null> { const [dictionary, english] = await Promise.all([requestUrl({ url: `https://mobile.youdao.com/dict?le=eng&q=${encodeURIComponent(word)}`, throw: false }), requestUrl({ url: `https://mobile.youdao.com/singledict?q=${encodeURIComponent(word)}&dict=ee&le=eng&more=false`, throw: false })]); if (dictionary.status !== 200) return null; const doc = new DOMParser().parseFromString(dictionary.text, "text/html"); const section = doc.querySelector("#ec"); if (!section) return null; const getPhonetic = (label: string) => Array.from(section.querySelectorAll("span")).find((element) => element.textContent?.includes(label))?.parentElement?.querySelector(".phonetic")?.textContent?.replace(/[\[\]]/g, "").trim() || ""; const getAudio = (type: string) => Array.from(section.querySelectorAll("[data-rel]")).map((element) => element.getAttribute("data-rel") || "").find((url) => url.includes(`type=${type}`)) || ""; const definitionsZh = Array.from(section.querySelectorAll("ul li")).map((item) => item.textContent?.replace(/\s+/g, " ").trim() || "").filter(Boolean); const definitionsEn = english.status === 200 ? Array.from(new DOMParser().parseFromString(english.text, "text/html").querySelectorAll("li.per-tran")).map((item) => item.textContent?.replace(/^\s*(\d+|[a-z]+)\.\s*/i, "").trim() || "").filter(Boolean) : []; return { word, phoneticUS: getPhonetic("美"), phoneticUK: getPhonetic("英"), definitionsZh: [...new Set(definitionsZh)], definitionsEn: [...new Set(definitionsEn)], speechUrls: { uk: normalizeAudio(getAudio("1")), us: normalizeAudio(getAudio("2")) } }; }
+async function requestYoudaoWordInfo(word: string): Promise<WordInfo | null> { const [dictionary, english] = await Promise.all([requestUrl({ url: `https://mobile.youdao.com/dict?le=eng&q=${encodeURIComponent(word)}`, throw: false }), requestUrl({ url: `https://mobile.youdao.com/singledict?q=${encodeURIComponent(word)}&dict=ee&le=eng&more=false`, throw: false })]); if (dictionary.status !== 200) return null; const doc = new DOMParser().parseFromString(dictionary.text, "text/html"); const section = doc.querySelector("#ec"); if (!section) return null; const getPhonetic = (label: string) => Array.from(section.querySelectorAll("span")).find((element) => element.textContent?.includes(label))?.parentElement?.querySelector(".phonetic")?.textContent?.replaceAll("[", "").replaceAll("]", "").trim() || ""; const getAudio = (type: string) => Array.from(section.querySelectorAll("[data-rel]")).map((element) => element.getAttribute("data-rel") || "").find((url) => url.includes(`type=${type}`)) || ""; const definitionsZh = Array.from(section.querySelectorAll("ul li")).map((item) => item.textContent?.replace(/\s+/g, " ").trim() || "").filter(Boolean); const definitionsEn = english.status === 200 ? Array.from(new DOMParser().parseFromString(english.text, "text/html").querySelectorAll("li.per-tran")).map((item) => item.textContent?.replace(/^\s*(\d+|[a-z]+)\.\s*/i, "").trim() || "").filter(Boolean) : []; return { word, phoneticUS: getPhonetic("美"), phoneticUK: getPhonetic("英"), definitionsZh: [...new Set(definitionsZh)], definitionsEn: [...new Set(definitionsEn)], speechUrls: { uk: normalizeAudio(getAudio("1")), us: normalizeAudio(getAudio("2")) } }; }
 function normalizeAudio(url: string) { try { const parsed = new URL(url.startsWith("//") ? `https:${url}` : url); return parsed.protocol === "https:" && parsed.hostname === "dict.youdao.com" ? parsed.href : ""; } catch { return ""; } }
 function isMostlyChinese(text: string) { const normalized = text.replace(/\s+/g, ""); const chinese = (normalized.match(/[\u3400-\u9fff]/g) || []).length; const latin = (normalized.match(/[A-Za-z]/g) || []).length; return chinese > 0 && chinese / Math.max(1, chinese + latin) >= 0.3; }
 function joinUrl(base: string, path: string) { return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`; }
