@@ -66,6 +66,8 @@ AI Translate does not collect or transmit data to an operator-controlled service
 
 ## Build from source
 
+The full repository build also requires Python 3 for browser release archives. The Obsidian-only build below requires Node.js only.
+
 ```sh
 cd obsidian-plugin
 npm ci

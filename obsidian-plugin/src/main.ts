@@ -229,7 +229,7 @@ class AITranslateSettingTab extends PluginSettingTab {
     return [
       {
         type: "group",
-        heading: "AI Translate",
+        heading: "Translation",
         items: [
           { name: "内置有道服务", desc: "优先使用有道移动词典和翻译；不可用时使用 OpenAI 兼容接口。", control: { type: "toggle", key: "builtinApiEnabled" } },
           { name: "API Base URL", desc: "OpenAI 兼容 API，例如 http://localhost:1234/v1", control: { type: "text", key: "baseUrl" } },
@@ -271,7 +271,7 @@ class AITranslateSettingTab extends PluginSettingTab {
 
   display() {
     const { containerEl } = this; containerEl.empty();
-    new Setting(containerEl).setName("AI Translate").setHeading();
+    new Setting(containerEl).setName("Translation").setHeading();
     new Setting(containerEl).setName("内置有道服务").setDesc("优先使用有道移动词典和翻译；不可用时使用 OpenAI 兼容接口。").addToggle((toggle) => toggle.setValue(this.plugin.settings.builtinApiEnabled).onChange(async (value) => { this.plugin.settings.builtinApiEnabled = value; await this.plugin.saveSettings(); }));
     textSetting(containerEl, "API Base URL", "OpenAI 兼容 API，例如 http://localhost:1234/v1", this.plugin.settings.baseUrl, async (value) => { this.plugin.settings.baseUrl = value; await this.plugin.saveSettings(); });
     textSetting(containerEl, "Endpoint Path", "通常为 /chat/completions", this.plugin.settings.endpointPath, async (value) => { this.plugin.settings.endpointPath = value; await this.plugin.saveSettings(); });
