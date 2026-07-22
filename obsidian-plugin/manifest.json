@@ -1,0 +1,10 @@
+{
+  "id": "ai-translate",
+  "name": "AI Translate",
+  "version": "7.0.0",
+  "minAppVersion": "1.12.4",
+  "description": "单独查词、选中查词、翻译与外部单词本适配。",
+  "author": "DxShelley",
+  "authorUrl": "https://github.com/DXShelley/ai-translate",
+  "isDesktopOnly": false
+}

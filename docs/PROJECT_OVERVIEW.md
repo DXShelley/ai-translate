@@ -4,12 +4,12 @@
 
 ### 发布与版本
 
-- 当前发布版本为 `v6.0.2`。
+- 当前发布版本为 `v7.0.0`。
 - 发布包：
   - `AI-Translate-chrome.zip`
   - `AI-Translate-edge.zip`
   - `AI-Translate-firefox.zip`
-- VS Code 发布包：`dist/ai-translate-hover-6.0.2.vsix`。
+- VS Code 发布包：`dist/ai-translate-hover-7.0.0.vsix`。
 - 构建入口：`npm run build`，实际执行 `scripts/build.js`。
 - 构建脚本会生成 `packages/chrome`、`packages/edge`、`packages/firefox`，并刷新对应 zip。
 - 每次发布还必须进入 `vscode-extension/` 执行 `npm run check` 和 `npm run package`。
@@ -114,9 +114,7 @@ python -c "from PIL import Image; from pathlib import Path; [print(p, Image.open
   - 弹框语言
   - 悬停翻译
   - 悬停触发键
-  - 输入框翻译
   - 请求日志
-  - 触发空格次数
 
 ### 翻译参数全局化
 

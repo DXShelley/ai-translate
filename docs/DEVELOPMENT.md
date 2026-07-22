@@ -66,7 +66,7 @@
 模型配置和全局设置必须保持边界清晰：
 
 - 大模型配置只放模型相关字段，例如接口地址、接口路径、鉴权、模型 ID、温度、超时、优先级、提示词和 `extraBody`。
-- 全局设置放所有模型共享字段，例如翻译方向、原文语言、译文语言、弹框语言、悬停翻译、输入框翻译、请求日志和外部单词本适配。
+- 全局设置放所有模型共享字段，例如翻译方向、原文语言、译文语言、弹框语言、悬停翻译、请求日志和外部单词本适配。
 - `profileTextSnapshot()` 不应把全局设置字段写入单个模型 JSON。
 - `fillForm()` 和 `applyProfileTextToForm()` 不应把模型 JSON 中的全局字段覆盖到全局表单。
 
@@ -139,12 +139,12 @@ MiniMax 使用 OpenAI 兼容协议：
 ```text
 vocabularyEnabled
 vocabularyAutoSave
-vocabularyMethod
 vocabularyUrl
-vocabularyHeaders
-vocabularyBodyTemplate
+vocabularyMethod
+vocabularyRequestTemplate
+vocabularyAuthCredential
 vocabularyAuthType
-vocabularyAuthToken
+vocabularyCustomHeaders
 ```
 
 浏览器扩展中，`src/popup.js` 和 `src/content.js` 只在原始查询被识别为英文单词且查询成功后，依据 `vocabularyEnabled` 和 `vocabularyAutoSave` 调用 `LIT_SAVE_VOCABULARY`。中文输入走翻译；其他非英文输入不得请求英文词典或单词本。`src/background.js` 是唯一允许执行外部单词本 HTTP 请求的位置，并必须拒绝非英文词条。
@@ -152,13 +152,14 @@ vocabularyAuthToken
 实现约束：
 
 - 单词本请求不能阻塞或改变词典查询的成功结果；自动请求异常只记录到控制台和可选请求日志。
-- 自动收藏的触发单位是用户的每次英文单词查词操作，而不是词典 HTTP 请求。即使词典信息命中内存或最近结果缓存，也必须再次调用 `LIT_SAVE_VOCABULARY`，以支持外部单词本累计重复查询次数。
+- 自动收藏的触发单位是用户的每次英文单词查词操作，而不是词典 HTTP 请求。即使词典信息命中内存或最近结果缓存，也必须再次调用 `LIT_SAVE_VOCABULARY`，以支持外部单词本累计重复查询次数；但同一规范化词条仍在写入时，必须复用该 Promise，避免并发重复请求。
 - 当单词本适配启用且自动收藏关闭时，网页弹框和扩展工具栏的英文单词查询结果都必须显示手动“收藏”按钮；自动收藏开启、单词本适配关闭或原始查询不是英文单词时不显示。手动收藏必须使用原始英文查询，不能使用词典响应改写后的词条。
 - 支持 `GET`、`POST`，以及 `{{word}}`、`{{definition}}`、`{{phoneticUS}}`、`{{phoneticUK}}` 模板变量。GET 模板必须是 JSON 对象并转换为查询参数；无效模板必须在配置页和后台拒绝，POST 将模板结果作为请求体。
-- 请求头必须是 JSON 对象。认证支持 `none`、`bearer`、`basic`；其他认证方式通过自定义请求头实现。
+- 请求头必须是 JSON 对象。认证支持 `none`、`bearer`、`basic`；其他认证方式通过自定义请求头实现。每次实际写入都必须默认发送符合服务端格式约束的 `Idempotency-Key`，但不能覆盖用户自定义的同名请求头。
 - 开启 `settings.requestLogging` 时，以 `type: "vocabulary"` 写入 `requestLogs`，包含 URL、请求头、请求体、响应、状态码、耗时和错误；配置解析失败也必须写入错误日志。配置页日志详情必须展示 HTTP 状态码。保存前必须脱敏请求头中的 `authorization`、`apiKey`、`token`、`secret` 等字段。
 - 单词本配置会随全局配置导入和导出；新增字段时需要同步 `DEFAULT_CONFIG`、`normalizeSettings`、`readSettingsFromForm` 与 `GLOBAL_SETTING_FIELDS`。
-- VS Code 插件使用同名的 `aiTranslateHover.vocabulary*` 设置，并在 `package.json` 的 `AI Translate Hover: Vocabulary` 设置组中声明。`vscode-extension/extension.js` 在每次成功的英文词典查询后异步调用 `saveVocabulary`；即使词典信息来自缓存也必须调用一次。自动收藏关闭时，悬停 Markdown 在词条标题下方显示 `aiTranslateHover.saveVocabulary` 命令链接。该请求不得阻塞 Hover 返回，且仅接受英文单词。
+- VS Code 插件使用同名的 `aiTranslateHover.vocabulary*` 设置，并在 `package.json` 的 `AI Translate Hover: Vocabulary` 设置组中声明。`vscode-extension/extension.js` 在每次成功的英文词典查询后异步调用 `saveVocabulary`；即使词典信息来自缓存也必须调用一次。自动收藏关闭时，悬停 Markdown 在词条标题下方显示 `aiTranslateHover.saveVocabulary` 命令链接。该请求不得阻塞 Hover 返回，且仅接受英文单词。Obsidian、VS Code 与浏览器后台必须使用一致的并发合并和 `Idempotency-Key` 规则。
+- `shared/vocabulary.js` 是单词本协议的唯一实现，负责请求体模板、请求头、认证、幂等键和同词并发合并。浏览器构建直接打入该文件；Obsidian 由 esbuild 打包；VS Code 在 `npm run check` 与 `npm run package` 前通过 `scripts/sync-vocabulary.js` 同步到扩展目录。平台代码只保留各自的网络传输、日志和 UI 反馈。
 
 用户要求清空 Codex 会话时，只清理会话目录和索引文件：
 
@@ -279,7 +280,7 @@ Edge/Chrome manifest 需要 `tts` 权限。Firefox 包不添加 `tts` 权限，�
 - `sourceLanguage` 作为原文语言提示传给模型。
 - `targetLanguage` 作为译文语言传给模型。
 
-划词、句子、段落和输入框翻译都走同一判断逻辑。content 端翻译缓存 key 必须包含 `translationMode/sourceLanguage/targetLanguage`，避免切换方向后复用旧译文。
+划词、句子和段落翻译都走同一判断逻辑。content 端翻译缓存 key 必须包含 `translationMode/sourceLanguage/targetLanguage`，避免切换方向后复用旧译文。
 
 ## 模型调用规范
 

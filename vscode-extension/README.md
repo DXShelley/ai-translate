@@ -1,6 +1,6 @@
 # AI Translate Hover for VS Code
 
-当前发布版本：`v6.0.2`。本项目同时维护浏览器扩展与 VS Code 扩展；浏览器构建说明见 [`docs/BROWSER-EXTENSIONS.md`](../docs/BROWSER-EXTENSIONS.md)。
+当前发布版本：`v7.0.0`。本项目同时维护浏览器扩展与 VS Code 扩展；浏览器构建说明见 [`docs/BROWSER-EXTENSIONS.md`](../docs/BROWSER-EXTENSIONS.md)。
 
 选中一个英文单词或连续中文词语，将鼠标停在选区上超过一秒，会显示翻译悬浮框。
 
@@ -50,9 +50,9 @@
 
 ## 外部单词本
 
-设置 `aiTranslateHover.vocabularyEnabled` 为 `true` 并填写 `aiTranslateHover.vocabularyUrl` 后，英文词典查询会提交给外部单词本 API。`vocabularyAutoSave` 默认开启：每次查询成功都会异步收藏一次，即使词典结果来自本地缓存；请求失败不会影响弹框显示。关闭自动收藏后，英文词典弹框会显示“收藏”按钮。
+设置 `aiTranslateHover.vocabularyEnabled` 为 `true` 并填写 `aiTranslateHover.vocabularyUrl` 后，英文词典查询会提交给外部单词本 API。`vocabularyAutoSave` 默认开启：顺序的每次查询成功都会异步收藏一次，即使词典结果来自本地缓存；同一词条尚未完成的保存会合并。请求失败不会影响弹框显示。关闭自动收藏后，英文词典弹框会显示“收藏”按钮。
 
-默认配置与最新单词本接口一致：`POST http://127.0.0.1:3000/api/v1/words`，使用 Bearer Token 和 JSON 请求体。填写 `aiTranslateHover.vocabularyAuthToken` 后，请求等价于：
+默认配置与最新单词本接口一致：`POST http://127.0.0.1:3000/api/v1/words`，使用 Bearer Token 和 JSON 请求体。填写 `aiTranslateHover.vocabularyAuthCredential` 后，请求等价于：
 
 ```json
 {
@@ -64,4 +64,4 @@
 }
 ```
 
-支持 `POST` 与 `GET`，可配置 JSON 请求头、Bearer Token 或 Basic 认证。`vocabularyBodyTemplate` 是 POST 请求体或 GET 参数 JSON 模板，默认支持 `{{headword}}`、`{{phoneticUs}}`、`{{phoneticUk}}`、`{{definitionZh}}`、`{{definitionEn}}`；旧的 `{{word}}`、`{{definition}}`、`{{phoneticUS}}`、`{{phoneticUK}}` 及后续通用变量仍兼容。
+支持 `http` / `https` 端点与 `POST` / `GET`。POST 使用 JSON 请求体；GET 自动将请求参数 JSON 的一级字段转为查询参数。默认变量为 `{{headword}}`、`{{phoneticUs}}`、`{{phoneticUk}}`、`{{definitionZh}}`、`{{definitionEn}}`，可映射到其他单词本的字段名。认证支持 Bearer、Basic 或无认证；自定义认证和特殊请求头通过 `aiTranslateHover.vocabularyCustomHeaders` 的 JSON 对象配置。每次实际写入会自动添加 `Idempotency-Key`；如自定义头中已有同名字段，扩展不会覆盖它。

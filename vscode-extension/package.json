@@ -3,7 +3,7 @@
   "displayName": "AI Translate Hover",
   "description": "Translate a selected word after hovering it for one second.",
   "icon": "media/icon.png",
-  "version": "6.0.2",
+  "version": "7.0.0",
   "publisher": "DxShelley",
   "license": "MIT",
   "author": {
@@ -20,9 +20,20 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
-  "keywords": ["translate", "translation", "hover", "dictionary", "youdao", "ai"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "translate",
+    "translation",
+    "hover",
+    "dictionary",
+    "youdao",
+    "ai"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
@@ -48,117 +59,146 @@
       {
         "title": "AI Translate Hover",
         "properties": {
-        "aiTranslateHover.baseUrl": {
-          "type": "string",
-          "default": "http://localhost:1234/v1",
-          "description": "OpenAI-compatible API base URL."
-        },
-        "aiTranslateHover.endpointPath": {
-          "type": "string",
-          "default": "/chat/completions",
-          "description": "OpenAI-compatible chat endpoint path."
-        },
-        "aiTranslateHover.model": {
-          "type": "string",
-          "default": "local-model",
-          "description": "Model ID used for translation."
-        },
-        "aiTranslateHover.apiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Optional API key. Stored in VS Code settings; use a secure settings target when appropriate."
-        },
-        "aiTranslateHover.targetLanguage": {
-          "type": "string",
-          "default": "简体中文",
-          "description": "Target language for non-Chinese text. Chinese text is translated to English."
-        },
-        "aiTranslateHover.triggerMode": {
-          "type": "string",
-          "enum": ["hover", "keyboard", "hoverAndKeyboard"],
-          "enumDescriptions": [
-            "Translate when hovering over a selected word.",
-            "Translate the selected word with the keyboard shortcut only.",
-            "Enable both hover and keyboard shortcut triggers."
-          ],
-          "default": "hover",
-          "description": "How translation is triggered. Assign a shortcut for AI Translate: Translate Selection in Keyboard Shortcuts to use keyboard triggering."
-        },
-        "aiTranslateHover.builtinApiEnabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Use the built-in Youdao mobile translation service before the configured OpenAI-compatible API."
-        },
-        "aiTranslateHover.trustPronunciationDomainOnActivate": {
-          "type": "boolean",
-          "default": true,
-          "description": "Add dict.youdao.com to VS Code trusted domains when the extension activates, so pronunciation links do not require confirmation."
-        },
-        "aiTranslateHover.hoverDelayMs": {
-          "type": "number",
-          "default": 1000,
-          "minimum": 1000,
-          "description": "Additional hover duration before a translation request starts, in milliseconds."
-        },
-        "aiTranslateHover.timeoutMs": {
-          "type": "number",
-          "default": 45000,
-          "minimum": 1000,
-          "description": "Translation request timeout, in milliseconds."
-        }
+          "aiTranslateHover.baseUrl": {
+            "type": "string",
+            "order": 10,
+            "default": "http://localhost:1234/v1",
+            "description": "OpenAI-compatible API base URL."
+          },
+          "aiTranslateHover.endpointPath": {
+            "type": "string",
+            "order": 20,
+            "default": "/chat/completions",
+            "description": "OpenAI-compatible chat endpoint path."
+          },
+          "aiTranslateHover.model": {
+            "type": "string",
+            "order": 40,
+            "default": "local-model",
+            "description": "Model ID used for translation."
+          },
+          "aiTranslateHover.apiKey": {
+            "type": "string",
+            "order": 30,
+            "default": "",
+            "description": "Optional API key. Stored in VS Code settings; use a secure settings target when appropriate."
+          },
+          "aiTranslateHover.targetLanguage": {
+            "type": "string",
+            "order": 50,
+            "default": "简体中文",
+            "description": "Target language for non-Chinese text. Chinese text is translated to English."
+          },
+          "aiTranslateHover.triggerMode": {
+            "type": "string",
+            "order": 70,
+            "enum": [
+              "hover",
+              "keyboard",
+              "hoverAndKeyboard"
+            ],
+            "enumDescriptions": [
+              "Translate when hovering over a selected word.",
+              "Translate the selected word with the keyboard shortcut only.",
+              "Enable both hover and keyboard shortcut triggers."
+            ],
+            "default": "hover",
+            "description": "How translation is triggered. Assign a shortcut for AI Translate: Translate Selection in Keyboard Shortcuts to use keyboard triggering."
+          },
+          "aiTranslateHover.builtinApiEnabled": {
+            "type": "boolean",
+            "order": 60,
+            "default": true,
+            "description": "Use the built-in Youdao mobile translation service before the configured OpenAI-compatible API."
+          },
+          "aiTranslateHover.trustPronunciationDomainOnActivate": {
+            "type": "boolean",
+            "order": 90,
+            "default": true,
+            "description": "Add dict.youdao.com to VS Code trusted domains when the extension activates, so pronunciation links do not require confirmation."
+          },
+          "aiTranslateHover.hoverDelayMs": {
+            "type": "number",
+            "order": 80,
+            "default": 1000,
+            "minimum": 1000,
+            "description": "Additional hover duration before a translation request starts, in milliseconds."
+          },
+          "aiTranslateHover.timeoutMs": {
+            "type": "number",
+            "order": 100,
+            "default": 45000,
+            "minimum": 1000,
+            "description": "Translation request timeout, in milliseconds."
+          }
         }
       },
       {
         "title": "AI Translate Hover: Vocabulary",
         "properties": {
-        "aiTranslateHover.vocabularyEnabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable the external vocabulary API adapter for English dictionary queries."
-        },
-        "aiTranslateHover.vocabularyAutoSave": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically save every successful English dictionary query. Disable to show a Save button in the hover popup."
-        },
-        "aiTranslateHover.vocabularyUrl": {
-          "type": "string",
-          "default": "http://127.0.0.1:3000/api/v1/words",
-          "description": "Full URL of the external vocabulary API."
-        },
-        "aiTranslateHover.vocabularyMethod": {
-          "type": "string",
-          "enum": ["POST", "GET"],
-          "default": "POST",
-          "description": "HTTP method used by the external vocabulary API."
-        },
-        "aiTranslateHover.vocabularyHeaders": {
-          "type": "string",
-          "default": "{}",
-          "description": "JSON object of additional request headers for the external vocabulary API."
-        },
-        "aiTranslateHover.vocabularyAuthType": {
-          "type": "string",
-          "enum": ["none", "bearer", "basic"],
-          "default": "bearer",
-          "description": "Authentication method for the external vocabulary API."
-        },
-        "aiTranslateHover.vocabularyAuthToken": {
-          "type": "string",
-          "default": "",
-          "description": "Bearer token, or username:password for Basic authentication."
-        },
-        "aiTranslateHover.vocabularyBodyTemplate": {
-          "type": "string",
-          "default": "{\n  \"headword\": \"{{headword}}\",\n  \"phoneticUs\": \"{{phoneticUs}}\",\n  \"phoneticUk\": \"{{phoneticUk}}\",\n  \"definitionZh\": \"{{definitionZh}}\",\n  \"definitionEn\": \"{{definitionEn}}\"\n}",
-          "description": "POST body or GET parameter JSON template. Defaults to {{headword}}, {{phoneticUs}}, {{phoneticUk}}, {{definitionZh}}, and {{definitionEn}}; legacy variables remain supported."
-        }
+          "aiTranslateHover.vocabularyEnabled": {
+            "type": "boolean",
+            "order": 10,
+            "default": false,
+            "description": "Enable the external vocabulary API adapter for English dictionary queries."
+          },
+          "aiTranslateHover.vocabularyAutoSave": {
+            "type": "boolean",
+            "order": 30,
+            "default": true,
+            "description": "Automatically save every successful English dictionary query. Disable to show a Save button in the hover popup."
+          },
+          "aiTranslateHover.vocabularyUrl": {
+            "type": "string",
+            "order": 40,
+            "default": "http://127.0.0.1:3000/api/v1/words",
+            "description": "Vocabulary endpoint. Supports HTTP and HTTPS URLs."
+          },
+          "aiTranslateHover.vocabularyMethod": {
+            "type": "string",
+            "order": 20,
+            "enum": [
+              "POST",
+              "GET"
+            ],
+            "default": "POST",
+            "description": "POST sends the Word Book JSON body; GET sends the same fields as query parameters."
+          },
+          "aiTranslateHover.vocabularyRequestTemplate": {
+            "type": "string",
+            "order": 50,
+            "default": "{\n  \"headword\": \"{{headword}}\",\n  \"phoneticUs\": \"{{phoneticUs}}\",\n  \"phoneticUk\": \"{{phoneticUk}}\",\n  \"definitionZh\": \"{{definitionZh}}\",\n  \"definitionEn\": \"{{definitionEn}}\"\n}",
+            "description": "JSON request parameters. Supports {{headword}}, {{phoneticUs}}, {{phoneticUk}}, {{definitionZh}}, and {{definitionEn}}."
+          },
+          "aiTranslateHover.vocabularyAuthCredential": {
+            "type": "string",
+            "order": 70,
+            "default": "",
+            "description": "Credential used by the selected vocabulary authentication method."
+          },
+          "aiTranslateHover.vocabularyAuthType": {
+            "type": "string",
+            "order": 60,
+            "enum": [
+              "bearer",
+              "basic",
+              "none"
+            ],
+            "default": "bearer",
+            "description": "Authentication applied to vocabulary requests."
+          },
+          "aiTranslateHover.vocabularyCustomHeaders": {
+            "type": "string",
+            "order": 80,
+            "default": "{}",
+            "description": "JSON object of extra request headers, including custom authentication headers."
+          }
         }
       }
     ]
   },
   "scripts": {
-    "check": "node --check extension.js && node --test test/*.test.js",
-    "package": "npx @vscode/vsce package --out ../dist/ai-translate-hover-${npm_package_version}.vsix"
+    "check": "node ../scripts/sync-vocabulary.js && node --check extension.js && node --test test/*.test.js",
+    "package": "node ../scripts/sync-vocabulary.js && npx @vscode/vsce package --out ../dist/ai-translate-hover-${npm_package_version}.vsix"
   }
 }

@@ -1,0 +1,183 @@
+.ai-translate-modal .modal-content {
+  box-sizing: border-box;
+  max-width: 44rem;
+  padding: 1.25rem 1.35rem 1.1rem;
+}
+
+.ai-translate-modal .modal-title {
+  margin: 0;
+  color: var(--text-normal);
+  font-size: 1.35rem;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.ai-translate-helper {
+  margin: 0.55rem 0 1rem;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+}
+
+.ai-translate-lookup-form input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.4rem;
+  padding: 0.5rem 0.7rem;
+}
+
+.ai-translate-result-modal .modal-content {
+  min-width: min(35rem, calc(100vw - 2rem));
+}
+
+.ai-translate-pronunciation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  align-items: center;
+  margin: 0.7rem 0 1.1rem;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.ai-translate-pronunciation-item {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.75rem;
+  gap: 0.35rem;
+}
+
+.ai-translate-pronunciation-label {
+  color: var(--text-faint);
+}
+
+.ai-translate-phonetic {
+  color: var(--text-muted);
+  font-family: var(--font-text);
+}
+
+.ai-translate-audio-button {
+  display: inline-grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  place-items: center;
+  color: var(--text-muted);
+  border-radius: var(--button-radius);
+}
+
+.ai-translate-audio-button:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.ai-translate-audio-button:focus-visible,
+.ai-translate-save:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.ai-translate-section {
+  margin-top: 1rem;
+}
+
+.ai-translate-section + .ai-translate-section {
+  padding-top: 1rem;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.ai-translate-section-title {
+  margin-bottom: 0.55rem;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.ai-translate-definition-list {
+  display: grid;
+  gap: 0.38rem;
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--text-normal);
+  line-height: 1.55;
+}
+
+.ai-translate-definition-list li::marker {
+  color: var(--text-faint);
+}
+
+.ai-translate-section-en {
+  color: var(--text-muted);
+}
+
+.ai-translate-section-en .ai-translate-definition-list {
+  font-size: var(--font-text-size);
+}
+
+.ai-translate-result {
+  white-space: pre-wrap;
+  color: var(--text-normal);
+  line-height: 1.65;
+}
+
+.ai-translate-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.2rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.ai-translate-save {
+  min-height: 2rem;
+}
+
+.ai-translate-loading {
+  min-height: 4.5rem;
+  padding-top: 1rem;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.ai-translate-state {
+  margin-top: 1rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: var(--radius-s);
+  line-height: 1.5;
+}
+
+.ai-translate-state strong,
+.ai-translate-state p {
+  display: block;
+  margin: 0;
+}
+
+.ai-translate-state p {
+  margin-top: 0.25rem;
+}
+
+.ai-translate-error {
+  color: var(--text-error);
+  background: var(--background-modifier-error);
+}
+
+@media (max-width: 480px) {
+  .ai-translate-modal .modal-content {
+    padding: 1rem;
+  }
+
+  .ai-translate-result-modal .modal-content {
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-translate-modal *,
+  .ai-translate-modal *::before,
+  .ai-translate-modal *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}

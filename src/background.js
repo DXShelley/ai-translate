@@ -1,5 +1,6 @@
 importScripts("vendor/jsonrepair.min.js");
 importScripts("browser-adapter.js");
+importScripts("../shared/vocabulary.js");
 
 const DEFAULT_PROFILE = {
   id: "default",
@@ -25,6 +26,11 @@ const DEFAULT_PROFILE = {
     "{{instruction}}\nReturn only the translation text.\nDo not explain. Do not add alternatives. Do not output reasoning, analysis, hidden thoughts, or <think> tags.\nKeep line breaks when they carry meaning.\nUse the surrounding context and previous translations to keep terms, names, pronouns, and style consistent.\n\n{{contextBlock}}\n{{previousTranslationsBlock}}\n\nText to translate:\n{{text}}"
 };
 
+const WORD_BOOK_API_URL = "http://127.0.0.1:3000/api/v1/words";
+const WORD_BOOK_REQUEST_TEMPLATE = "{\n  \"headword\": \"{{headword}}\",\n  \"phoneticUs\": \"{{phoneticUs}}\",\n  \"phoneticUk\": \"{{phoneticUk}}\",\n  \"definitionZh\": \"{{definitionZh}}\",\n  \"definitionEn\": \"{{definitionEn}}\"\n}";
+const vocabulary = globalThis.AITranslateVocabulary;
+const vocabularySaveCoordinator = vocabulary.createSaveCoordinator();
+
 const DEFAULT_CONFIG = {
   activeProfileId: DEFAULT_PROFILE.id,
   profiles: [DEFAULT_PROFILE],
@@ -32,19 +38,17 @@ const DEFAULT_CONFIG = {
     displayMode: "bilingual",
     hoverTranslate: true,
     hoverModifier: "ctrl",
-    inputTranslate: true,
-    inputTriggerSpaces: 3,
     bilingualLayout: "vertical",
     requestLogging: false,
     builtinApiEnabled: true,
     vocabularyEnabled: false,
     vocabularyAutoSave: true,
     vocabularyMethod: "POST",
-    vocabularyUrl: "http://127.0.0.1:3000/api/v1/words",
-    vocabularyHeaders: "{\n  \"Content-Type\": \"application/json\"\n}",
-    vocabularyBodyTemplate: "{\n  \"headword\": \"{{headword}}\",\n  \"phoneticUs\": \"{{phoneticUs}}\",\n  \"phoneticUk\": \"{{phoneticUk}}\",\n  \"definitionZh\": \"{{definitionZh}}\",\n  \"definitionEn\": \"{{definitionEn}}\"\n}",
+    vocabularyUrl: WORD_BOOK_API_URL,
+    vocabularyRequestTemplate: WORD_BOOK_REQUEST_TEMPLATE,
+    vocabularyAuthCredential: "",
     vocabularyAuthType: "bearer",
-    vocabularyAuthToken: "",
+    vocabularyCustomHeaders: "{}",
     popupLanguage: "all",
     translationMode: "auto-zh-en",
     sourceLanguage: "自动检测",
@@ -183,10 +187,6 @@ function normalizeSettings(source = {}) {
     hoverModifier: ["ctrl", "alt", "shift", "none"].includes(source.hoverModifier)
       ? source.hoverModifier
       : DEFAULT_CONFIG.settings.hoverModifier,
-    inputTranslate: typeof source.inputTranslate === "boolean"
-      ? source.inputTranslate
-      : DEFAULT_CONFIG.settings.inputTranslate,
-    inputTriggerSpaces: clampNumber(Number(source.inputTriggerSpaces || DEFAULT_CONFIG.settings.inputTriggerSpaces), 2, 6),
     bilingualLayout: ["vertical", "horizontal"].includes(source.bilingualLayout)
       ? source.bilingualLayout
       : DEFAULT_CONFIG.settings.bilingualLayout,
@@ -199,11 +199,11 @@ function normalizeSettings(source = {}) {
     vocabularyEnabled: source.vocabularyEnabled === true,
     vocabularyAutoSave: source.vocabularyAutoSave !== false,
     vocabularyMethod: String(source.vocabularyMethod || "POST").toUpperCase() === "GET" ? "GET" : "POST",
-    vocabularyUrl: String(source.vocabularyUrl || "").trim(),
-    vocabularyHeaders: String(source.vocabularyHeaders ?? DEFAULT_CONFIG.settings.vocabularyHeaders),
-    vocabularyBodyTemplate: String(source.vocabularyBodyTemplate ?? DEFAULT_CONFIG.settings.vocabularyBodyTemplate),
-    vocabularyAuthType: ["none", "bearer", "basic"].includes(source.vocabularyAuthType) ? source.vocabularyAuthType : "none",
-    vocabularyAuthToken: String(source.vocabularyAuthToken || ""),
+    vocabularyUrl: String(source.vocabularyUrl || WORD_BOOK_API_URL).trim(),
+    vocabularyRequestTemplate: String(source.vocabularyRequestTemplate || WORD_BOOK_REQUEST_TEMPLATE),
+    vocabularyAuthCredential: String(source.vocabularyAuthCredential || ""),
+    vocabularyAuthType: ["none", "bearer", "basic"].includes(source.vocabularyAuthType) ? source.vocabularyAuthType : DEFAULT_CONFIG.settings.vocabularyAuthType,
+    vocabularyCustomHeaders: String(source.vocabularyCustomHeaders || "{}"),
     translationMode: ["auto-zh-en", "manual"].includes(source.translationMode)
       ? source.translationMode
       : DEFAULT_CONFIG.settings.translationMode,
@@ -352,8 +352,11 @@ async function saveVocabulary(payload) {
   const word = String(payload?.word || info.word || "").trim();
   if (!word) throw new Error("没有可收藏的单词");
   if (!isEnglishVocabularyWord(word)) throw new Error("单词本仅支持收藏英文单词");
+  return vocabularySaveCoordinator.run(word, () => postVocabulary(settings, word, info));
+}
+
+async function postVocabulary(settings, word, info) {
   const startedAt = Date.now();
-  const method = settings.vocabularyMethod;
   let url = settings.vocabularyUrl;
   let requestBody;
   let requestHeaders;
@@ -361,24 +364,18 @@ async function saveVocabulary(payload) {
   let responseBody;
   let responseText;
   try {
-    const variables = buildVocabularyVariables(word, info);
-    const headers = parseVocabularyHeaders(settings.vocabularyHeaders);
-    applyVocabularyAuth(headers, settings);
+    const headers = { "Content-Type": "application/json", ...vocabulary.parseHeaders(settings.vocabularyCustomHeaders) };
+    vocabulary.applyAuth(headers, settings.vocabularyAuthType, settings.vocabularyAuthCredential, btoa);
+    vocabulary.addIdempotencyKey(headers, () => crypto.randomUUID());
     requestHeaders = redactHeaders(headers);
-    url = replaceVocabularyTokens(url, variables);
-    const template = replaceVocabularyTemplate(settings.vocabularyBodyTemplate, variables);
-    if (method === "GET") {
-      const query = parseVocabularyTemplate(template);
-      if (!query || typeof query !== "object" || Array.isArray(query)) throw new Error("GET 参数模板必须是 JSON 对象");
-      const params = new URLSearchParams();
-      Object.entries(query).forEach(([key, value]) => params.set(key, typeof value === "string" ? value : JSON.stringify(value)));
-      if (params.toString()) url += `${url.includes("?") ? "&" : "?"}${params.toString()}`;
+    const payloadBody = vocabulary.buildRequest(settings.vocabularyRequestTemplate || WORD_BOOK_REQUEST_TEMPLATE, vocabulary.buildPayload(word, info));
+    if (settings.vocabularyMethod === "GET") {
+      const query = new URLSearchParams(vocabulary.toQueryEntries(payloadBody));
+      url += `${url.includes("?") ? "&" : "?"}${query}`;
     } else {
-      requestBody = template.trim();
-      if (requestBody && !Object.keys(headers).some((key) => key.toLowerCase() === "content-type")) headers["Content-Type"] = "application/json";
-      requestHeaders = redactHeaders(headers);
+      requestBody = JSON.stringify(payloadBody);
     }
-    const response = await fetch(url, { method, headers, body: requestBody });
+    const response = await fetch(url, { method: settings.vocabularyMethod, headers, body: requestBody });
     responseStatus = response.status;
     responseText = await response.text();
     responseBody = tryParseJson(responseText);
@@ -391,58 +388,9 @@ async function saveVocabulary(payload) {
   }
 }
 
-function buildVocabularyVariables(word, info) {
-  const definitionZh = (Array.isArray(info.partsOfSpeech) ? info.partsOfSpeech.map((item) => [item?.pos, item?.meaning].filter(Boolean).join(" ")) : []).filter(Boolean).join("；") || (info.definitionsZh || []).filter(Boolean).join("；");
-  const definitionEn = (info.definitionsEn || []).filter(Boolean).join("; ");
-  const legacyTranslation = (Array.isArray(info.partsOfSpeech) ? info.partsOfSpeech.map((item) => [item?.pos, item?.meaning].filter(Boolean).join(" ")) : []).filter(Boolean).join("; ") || (info.definitionsZh || []).filter(Boolean).join("; ");
-  const example = Array.isArray(info.examples) ? info.examples.find((item) => item?.en || item?.zh) : null;
-  return {
-    word,
-    definition: legacyTranslation,
-    phoneticUS: info.phoneticUS || "",
-    phoneticUK: info.phoneticUK || "",
-    original: word,
-    translation: legacyTranslation,
-    language: "en",
-    phoneticUs: formatVocabularyPhonetic(info.phoneticUS),
-    phoneticUk: formatVocabularyPhonetic(info.phoneticUK),
-    audioUsUrl: info.speechUrls?.us || "",
-    audioUkUrl: info.speechUrls?.uk || "",
-    example: example?.en || example?.zh || "",
-    source: info.raw?.source || "ai-translate",
-    headword: word,
-    phonetic: formatVocabularyPhonetic(info.phoneticUS || info.phoneticUK),
-    definitionZh,
-    definitionEn
-  };
-}
-function formatVocabularyPhonetic(value) {
-  const phonetic = String(value || "").trim().replace(/^\/+|\/+$/g, "");
-  return phonetic ? `/${phonetic}/` : "";
-}
+if (globalThis.__AI_TRANSLATE_TEST__) globalThis.__AI_TRANSLATE_TEST__.saveVocabulary = saveVocabulary;
+
 function isEnglishVocabularyWord(word) { return /^[A-Za-z][A-Za-z'-]*$/.test(String(word || "").trim()); }
-const VOCABULARY_TEMPLATE_VARIABLES = "word|definition|phoneticUS|phoneticUK|original|translation|language|phoneticUs|phoneticUk|audioUsUrl|audioUkUrl|example|source|headword|phonetic|definitionZh|definitionEn";
-function replaceVocabularyTokens(value, variables) { return String(value || "").replace(new RegExp(`{{\\s*(${VOCABULARY_TEMPLATE_VARIABLES})\\s*}}`, "g"), (_, key) => String(variables[key] || "")); }
-function replaceVocabularyTemplate(value, variables) {
-  const text = String(value || "");
-  return text.replace(new RegExp(`{{\\s*(${VOCABULARY_TEMPLATE_VARIABLES})\\s*}}`, "g"), (match, key, offset) => {
-    const replacement = String(variables[key] || "");
-    return text[offset - 1] === '"' && text[offset + match.length] === '"'
-      ? JSON.stringify(replacement).slice(1, -1)
-      : replacement;
-  });
-}
-function parseVocabularyTemplate(value) { try { return JSON.parse(value); } catch { return null; } }
-function parseVocabularyHeaders(value) {
-  const headers = parseVocabularyTemplate(value || "{}");
-  if (!headers || typeof headers !== "object" || Array.isArray(headers)) throw new Error("单词本请求头必须是 JSON 对象");
-  return Object.fromEntries(Object.entries(headers).map(([key, item]) => [String(key), String(item)]));
-}
-function applyVocabularyAuth(headers, settings) {
-  const token = settings.vocabularyAuthToken.trim();
-  if (!token || settings.vocabularyAuthType === "none") return;
-  headers.Authorization = settings.vocabularyAuthType === "basic" ? `Basic ${btoa(token)}` : `Bearer ${token}`;
-}
 function redactHeaders(headers) { return Object.fromEntries(Object.entries(headers).map(([key, value]) => [/authorization|api[-_]?key|token|secret/i.test(key) ? [key, "***"] : [key, value]])); }
 function tryParseJson(value) { try { return value ? JSON.parse(value) : {}; } catch { return { raw: value }; } }
 
