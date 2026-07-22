@@ -49,7 +49,11 @@ When external vocabulary integration is enabled, these additional settings becom
 | Authentication credential | Credential used by the selected authentication method. |
 | Custom headers | Additional request headers as a JSON object. |
 
-On Obsidian `1.13.0` and later, all settings are registered with the declarative settings API and are available through Settings search. The vocabulary credential remains a password input in both the modern and legacy settings interfaces.
+On Obsidian `1.13.0` and later, all settings are registered with declarative definitions and are available through Settings search. The vocabulary credential uses a custom password renderer and remains masked in both the modern and legacy settings interfaces.
+
+## Upgrading
+
+The legacy fallback API Key setting has been removed. When the plugin loads, any previously stored `apiKey` value is discarded and is not written back to the vault configuration.
 
 ## External vocabulary API
 

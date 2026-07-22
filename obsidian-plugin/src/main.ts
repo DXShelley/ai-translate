@@ -54,7 +54,7 @@ export default class AITranslatePlugin extends Plugin {
   private activeResultModal: ResultModal | null = null;
 
   async onload() {
-    this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData() || {}) };
+    this.settings = migrateSettings(await this.loadData());
     this.addSettingTab(new AITranslateSettingTab(this.app, this));
     this.addRibbonIcon("languages", "AI Translate: 查词或翻译", () => new LookupModal(this.app, this).open());
     this.addCommand({ id: "lookup", name: "查词或翻译", callback: () => new LookupModal(this.app, this).open() });
@@ -333,6 +333,13 @@ function extractTranslation(text: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function migrateSettings(raw: unknown): AITranslateSettings {
+  if (!isRecord(raw)) return { ...DEFAULT_SETTINGS };
+  const stored = raw as Partial<AITranslateSettings & { apiKey?: unknown }>;
+  const { apiKey: _deprecatedApiKey, ...settings } = stored;
+  return { ...DEFAULT_SETTINGS, ...settings };
 }
 
 function isSettingsKey(key: string): key is keyof AITranslateSettings {
