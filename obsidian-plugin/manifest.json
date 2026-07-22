@@ -1,7 +1,7 @@
 {
   "id": "ai-translate",
   "name": "AI Translate",
-  "version": "7.0.4",
+  "version": "7.0.5",
   "minAppVersion": "1.12.4",
   "description": "Dictionary lookup, selected-text translation, and external vocabulary integration.",
   "author": "DxShelley",
