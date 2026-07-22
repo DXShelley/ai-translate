@@ -35,7 +35,6 @@ After the plugin is approved in the Obsidian Community directory, open **Setting
 | API Base URL | The base URL of an OpenAI-compatible API, for example `http://localhost:1234/v1`. |
 | Endpoint Path | Usually `/chat/completions`. |
 | Model | The model sent to the fallback API. |
-| API Key | Optional bearer token for the fallback API. |
 | Target language | Translation target for non-Chinese text. |
 
 When external vocabulary integration is enabled, these additional settings become available:
@@ -50,7 +49,7 @@ When external vocabulary integration is enabled, these additional settings becom
 | Authentication credential | Credential used by the selected authentication method. |
 | Custom headers | Additional request headers as a JSON object. |
 
-On Obsidian `1.13.0` and later, all settings are registered with the declarative settings API and are available through Settings search. API keys and vocabulary credentials remain password inputs in both the modern and legacy settings interfaces.
+On Obsidian `1.13.0` and later, all settings are registered with the declarative settings API and are available through Settings search. The vocabulary credential remains a password input in both the modern and legacy settings interfaces.
 
 ## External vocabulary API
 

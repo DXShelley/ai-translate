@@ -30,7 +30,6 @@ interface AITranslateSettings {
   baseUrl: string;
   endpointPath: string;
   model: string;
-  apiKey: string;
   targetLanguage: string;
   timeoutMs: number;
   vocabularyEnabled: boolean;
@@ -44,7 +43,7 @@ interface AITranslateSettings {
 }
 
 const DEFAULT_SETTINGS: AITranslateSettings = {
-  builtinApiEnabled: true, baseUrl: "http://localhost:1234/v1", endpointPath: "/chat/completions", model: "local-model", apiKey: "", targetLanguage: "简体中文", timeoutMs: 45000,
+  builtinApiEnabled: true, baseUrl: "http://localhost:1234/v1", endpointPath: "/chat/completions", model: "local-model", targetLanguage: "简体中文", timeoutMs: 45000,
   vocabularyEnabled: false, vocabularyAutoSave: true, vocabularyUrl: WORD_BOOK_API_URL, vocabularyMethod: "POST", vocabularyCustomHeaders: "{}", vocabularyAuthType: "bearer", vocabularyAuthCredential: "", vocabularyRequestTemplate: DEFAULT_TEMPLATE
 };
 
@@ -120,7 +119,7 @@ export default class AITranslatePlugin extends Plugin {
       if (builtin) return builtin;
     }
     const url = joinUrl(this.settings.baseUrl, this.settings.endpointPath);
-    const result = await requestUrl({ url, method: "POST", headers: { "Content-Type": "application/json", ...(this.settings.apiKey ? { Authorization: `Bearer ${this.settings.apiKey}` } : {}) }, body: JSON.stringify({ model: this.settings.model, temperature: 0.2, messages: [{ role: "system", content: "You are a precise translation engine. Return only the translation. Do not explain." }, { role: "user", content: `Translate the following text to ${isMostlyChinese(text) ? "English" : this.settings.targetLanguage}.\n\nText: ${text}` }] }), throw: false });
+    const result = await requestUrl({ url, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: this.settings.model, temperature: 0.2, messages: [{ role: "system", content: "You are a precise translation engine. Return only the translation. Do not explain." }, { role: "user", content: `Translate the following text to ${isMostlyChinese(text) ? "English" : this.settings.targetLanguage}.\n\nText: ${text}` }] }), throw: false });
     if (result.status < 200 || result.status >= 300) throw new Error(`翻译接口请求失败 (${result.status}): ${result.text}`);
     const translation = extractTranslation(result.text);
     if (!translation) throw new Error("翻译接口未返回文本");
@@ -235,7 +234,6 @@ class AITranslateSettingTab extends PluginSettingTab {
           { name: "API Base URL", desc: "OpenAI 兼容 API，例如 http://localhost:1234/v1", control: { type: "text", key: "baseUrl" } },
           { name: "Endpoint Path", desc: "通常为 /chat/completions", control: { type: "text", key: "endpointPath" } },
           { name: "Model", desc: "内置服务不可用时使用的模型", control: { type: "text", key: "model" } },
-          { name: "API Key", desc: "可选", render: (setting) => addPasswordText(setting, this.plugin.settings.apiKey, async (value) => { this.plugin.settings.apiKey = value; await this.plugin.saveSettings(); }) },
           { name: "目标语言", desc: "非中文文本的翻译目标", control: { type: "text", key: "targetLanguage" } }
         ]
       },
@@ -276,7 +274,6 @@ class AITranslateSettingTab extends PluginSettingTab {
     textSetting(containerEl, "API Base URL", "OpenAI 兼容 API，例如 http://localhost:1234/v1", this.plugin.settings.baseUrl, async (value) => { this.plugin.settings.baseUrl = value; await this.plugin.saveSettings(); });
     textSetting(containerEl, "Endpoint Path", "通常为 /chat/completions", this.plugin.settings.endpointPath, async (value) => { this.plugin.settings.endpointPath = value; await this.plugin.saveSettings(); });
     textSetting(containerEl, "Model", "内置服务不可用时使用的模型", this.plugin.settings.model, async (value) => { this.plugin.settings.model = value; await this.plugin.saveSettings(); });
-    textSetting(containerEl, "API Key", "可选", this.plugin.settings.apiKey, async (value) => { this.plugin.settings.apiKey = value; await this.plugin.saveSettings(); }, true);
     textSetting(containerEl, "目标语言", "非中文文本的翻译目标", this.plugin.settings.targetLanguage, async (value) => { this.plugin.settings.targetLanguage = value; await this.plugin.saveSettings(); });
     new Setting(containerEl).setName("外部单词本").setHeading();
     new Setting(containerEl).setName("启用单词本适配").setDesc("仅提交英文单词查询结果；请求失败不影响查词。").addToggle((toggle) => toggle.setValue(this.plugin.settings.vocabularyEnabled).onChange(async (value) => { this.plugin.settings.vocabularyEnabled = value; await this.plugin.saveSettings(); this.display(); }));
