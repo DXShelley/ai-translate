@@ -4,10 +4,10 @@
 
 项目包含两类插件：浏览器扩展与 VS Code 扩展。浏览器扩展提供网页划词、句子和段落翻译；VS Code 扩展面向中文用户阅读英文 Skill 文档，提供选词悬停词典和翻译辅助。
 
-`v6.0.2` 发布产物：
+`v7.0.0` 发布产物：
 
 - 浏览器：`AI-Translate-chrome.zip`、`AI-Translate-edge.zip`、`AI-Translate-firefox.zip`
-- VS Code：[vscode-extension/](vscode-extension/README.md) 构建生成 `dist/ai-translate-hover-6.0.2.vsix`，可通过 `Install from VSIX...` 安装。
+- VS Code：[vscode-extension/](vscode-extension/README.md) 构建生成 `dist/ai-translate-hover-7.0.0.vsix`，可通过 `Install from VSIX...` 安装。
 
 VS Code 扩展最低兼容版本为 `1.85.0`，完整兼容性说明见 [`vscode-extension/README.md`](vscode-extension/README.md)。
 
@@ -25,7 +25,6 @@ VS Code 扩展主要面向中文用户阅读英文 Skill 文档的场景，提�
 - 已有句子/段落结果只做被动复用，不会因为划词自动请求更大粒度
 - 弹框工具条支持输入单词查询，自动切到划词页面，并可用左右箭头浏览历史单词
 - Ctrl 悬停段落翻译，可在配置页修改触发键
-- 输入框连续空格触发翻译，可在配置页关闭或调整空格次数
 - 暂时隐藏对照翻译的一一高亮能力，当前只展示原文和译文文本；后续再完善 span alignment
 - 英文单词词典信息：音标、美式/英式朗读、释义、例句、同义词、反义词
 - 浏览器扩展和 VS Code 插件均支持通用外部单词本适配：查询后自动收藏或手动收藏，支持 GET/POST、请求头、认证和请求模板
@@ -127,19 +126,19 @@ POST http://localhost:1234/v1/chat/completions
 
 ## 外部单词本适配
 
-浏览器扩展和 VS Code 插件只负责把查询到的英文单词信息提交给外部应用，不保存或管理单词本数据。该功能默认关闭；启用后，默认会在英文单词查询成功后异步自动收藏。每次用户查询英文单词都会发送一次收藏请求，即使词典信息命中本地缓存，以支持外部单词本统计重复查询的薄弱单词。中文输入走翻译；其他非英文输入不会请求词典或单词本。
+浏览器扩展、VS Code 和 Obsidian 插件只负责把查询到的英文单词信息提交给外部应用，不保存或管理单词本数据。该功能默认关闭；启用后，默认会在英文单词查询成功后异步自动收藏。顺序的每次英文单词查询都会提交一次，即使词典信息命中本地缓存；同一词条尚未完成的并发保存会合并为一次，以避免重复写入。中文输入走翻译；其他非英文输入不会请求词典或单词本。
 
 关闭“查询后自动收藏”后，网页弹框、浏览器扩展工具栏和 VS Code 悬停弹框的英文单词查询结果都会显示“收藏”按钮，供用户手动提交；启用自动收藏时不显示该按钮。浏览器端成功后显示“已收藏”，失败后可点击“重试收藏”；VS Code 端通过命令执行并显示结果通知。手动提交始终使用用户的原始英文查询。
 
 单词本配置项如下：
 
 - API 地址：默认 `http://127.0.0.1:3000/api/v1/words`。
-- 请求方法：`POST` 或 `GET`。
-- 请求头：JSON 对象，可放置任意服务所需的自定义头。
-- 认证方式：无认证、Bearer Token，或 Basic（认证凭据填写 `用户名:密码`）。也可直接在请求头中配置其他认证机制。
-- 请求体 / GET 参数模板：默认支持 `{{headword}}`、`{{phoneticUs}}`、`{{phoneticUk}}`、`{{definitionZh}}`、`{{definitionEn}}`；仍兼容 `{{word}}`、`{{definition}}`、`{{phoneticUS}}`、`{{phoneticUK}}` 以及后续的通用旧变量。`GET` 模板必须是 JSON 对象，并会转换为 URL 查询参数；`POST` 模板按原文本作为请求体发送。
+- 请求方法：`POST` 或 `GET`。POST 发送 JSON；GET 将同一字段编码为查询参数。
+- 认证凭据：可选；认证方式支持 Bearer、Basic 或无认证。自定义认证头在“自定义请求头（JSON）”中填写。
+- 请求参数（JSON）：默认使用 `headword`、`phoneticUs`、`phoneticUk`、`definitionZh`、`definitionEn`；可将这五个变量映射到其他单词本应用的字段名。
+- 幂等请求：每次实际写入默认添加 `Idempotency-Key`；若自定义请求头已设置同名字段，插件会保留用户提供的值。单词本服务应将唯一或主键约束冲突返回为 `409 Conflict`。
 
-默认 `POST` 模板：
+默认 `POST` 请求体：
 
 ```json
 {
@@ -150,6 +149,45 @@ POST http://localhost:1234/v1/chat/completions
   "definitionEn": "{{definitionEn}}"
 }
 ```
+
+### Edge 配置示例
+
+在 Edge 的 `edge://extensions` 打开 AI Translate 的“扩展选项”，进入“全局设置”中的单词本区域。更新插件后先点击“重新加载”，使配置页与后台脚本使用同一版本。
+
+**Word Book POST**
+
+1. 启用“单词本适配”，请求方法选择 `POST（JSON 请求体）`。
+2. API 地址填写 `http://127.0.0.1:3000/api/v1/words`。
+3. 请求参数保持默认五字段 JSON。
+4. 认证方式选择 `Bearer Token`，认证凭据填写服务的 API Key。
+5. 自定义请求头保持 `{}`，保存配置。
+
+插件会发送 `Content-Type: application/json`、`Authorization: Bearer <认证凭据>`，以及上方默认 JSON 请求体。
+
+**其他单词本 GET**
+
+1. 请求方法选择 `GET（查询参数）`，填写目标应用的 `http` 或 `https` API 地址。
+2. 在请求参数 JSON 中映射目标字段名，例如：
+
+```json
+{
+  "word": "{{headword}}",
+  "usIpa": "{{phoneticUs}}",
+  "ukIpa": "{{phoneticUk}}",
+  "translation": "{{definitionZh}}",
+  "definition": "{{definitionEn}}"
+}
+```
+
+3. Bearer 或 Basic 认证时选择对应方式并填写认证凭据；自定义认证头时选择“无认证”，再在“自定义请求头（JSON）”中填写，例如：
+
+```json
+{
+  "X-API-Key": "your-key"
+}
+```
+
+GET 会将上述 JSON 的一级字段自动编码为查询参数。
 
 单词本请求在词典结果已展示后独立执行。请求失败不会影响查词、发音或翻译。浏览器端可开启“请求日志”，在配置页日志面板检查 URL、请求头、请求体、响应、HTTP 状态、耗时和错误；无效请求头或 GET 模板也会写入错误日志。`Authorization`、API Key、Token、Secret 等请求头字段在日志中会显示为 `***`。VS Code 端的单词本设置位于独立的 `AI Translate Hover: Vocabulary` 设置组。
 
@@ -162,7 +200,6 @@ POST http://localhost:1234/v1/chat/completions
 5. 拖动弹框顶部空白区域可移动弹框。
 6. 鼠标移出弹框后自动关闭。
 7. 按住 Ctrl 并悬停段落可触发段落翻译。
-8. 输入框连续空格可翻译并替换输入内容。
 9. 右键选中文本可使用“翻译选中文本”。
 10. 在弹框顶部输入英文单词并回车，可查询单词翻译和词典信息。
 11. 单词输入框右侧左右箭头可浏览历史单词查询。

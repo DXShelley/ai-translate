@@ -5,8 +5,6 @@
     displayMode: "bilingual",
     hoverTranslate: true,
     hoverModifier: "ctrl",
-    inputTranslate: true,
-    inputTriggerSpaces: 3,
     bilingualLayout: "vertical",
     popupLanguage: "all",
     builtinApiEnabled: true,
@@ -25,7 +23,6 @@
     settings: { ...DEFAULT_SETTINGS },
     translationCacheSalt: "",
     lastHoverText: "",
-    inputSpaceCount: 0,
     closeToken: 0,
     pointerInsidePopover: false,
     suppressPopoverAutoCloseUntil: 0,
@@ -83,7 +80,6 @@
 
   function handleKeydown(event) {
     handleSelectionShortcut(event);
-    handleInputKeydown(event);
   }
 
   function handleSelectionShortcut(event) {
@@ -415,46 +411,6 @@
     ensureUi();
     placePanelNearPointer(event);
     await requestTranslation("paragraph", text);
-  }
-
-  async function handleInputKeydown(event) {
-    if (!state.settings.inputTranslate || event.key !== " ") {
-      if (event.key !== " ") state.inputSpaceCount = 0;
-      return;
-    }
-
-    const target = event.target;
-    if (!isEditable(target)) return;
-
-    state.inputSpaceCount += 1;
-    if (state.inputSpaceCount < Number(state.settings.inputTriggerSpaces || 3)) return;
-    state.inputSpaceCount = 0;
-    event.preventDefault();
-
-    const text = getEditableText(target).trim();
-    if (!text) return;
-
-    ensureUi();
-    placePanelNearViewportCenter();
-    showPanel("input", text, "翻译中...");
-
-    try {
-      const response = await browserApi.runtime.sendMessage({
-        type: "LIT_TRANSLATE",
-        payload: { mode: "input", text }
-      });
-      if (!response?.ok) throw new Error(response?.error || "翻译失败");
-
-      setEditableText(target, response.result.translation);
-      showPanel("input", text, response.result.translation);
-      saveRecentResult("input", text, response.result.translation);
-    } catch (error) {
-      if (isExtensionContextInvalidated(error)) {
-        handleRuntimeInvalidated();
-        return;
-      }
-      showPanel("input", text, "", error?.message || String(error));
-    }
   }
 
   function resolveTextForMode(mode) {
@@ -1769,23 +1725,6 @@
     return Boolean(
       element.closest("textarea, input[type='text'], input[type='search'], input:not([type]), [contenteditable='true']")
     );
-  }
-
-  function getEditableText(target) {
-    const element = target.closest?.("textarea, input, [contenteditable='true']") || target;
-    if (element.matches?.("textarea, input")) return element.value || "";
-    return element.innerText || element.textContent || "";
-  }
-
-  function setEditableText(target, text) {
-    const element = target.closest?.("textarea, input, [contenteditable='true']") || target;
-    if (element.matches?.("textarea, input")) {
-      element.value = text;
-      element.dispatchEvent(new Event("input", { bubbles: true }));
-      return;
-    }
-    element.textContent = text;
-    element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
   }
 
   function debounce(fn, wait) {

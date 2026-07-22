@@ -23,6 +23,9 @@ const DEFAULT_PROFILE = {
     "{{instruction}}\nReturn only the translation text.\nDo not explain. Do not add alternatives. Do not output reasoning, analysis, hidden thoughts, or<think> tags.\nKeep line breaks when they carry meaning.\nUse the surrounding context and previous translations to keep terms, names, pronouns, and style consistent.\n\n{{contextBlock}}\n{{previousTranslationsBlock}}\n\nText to translate:\n{{text}}"
 };
 
+const WORD_BOOK_API_URL = "http://127.0.0.1:3000/api/v1/words";
+const WORD_BOOK_REQUEST_TEMPLATE = "{\n  \"headword\": \"{{headword}}\",\n  \"phoneticUs\": \"{{phoneticUs}}\",\n  \"phoneticUk\": \"{{phoneticUk}}\",\n  \"definitionZh\": \"{{definitionZh}}\",\n  \"definitionEn\": \"{{definitionEn}}\"\n}";
+
 const DEFAULT_CONFIG = {
   activeProfileId: DEFAULT_PROFILE.id,
   profiles: [DEFAULT_PROFILE],
@@ -30,19 +33,17 @@ const DEFAULT_CONFIG = {
     displayMode: "bilingual",
     hoverTranslate: true,
     hoverModifier: "ctrl",
-    inputTranslate: true,
-    inputTriggerSpaces: 3,
     bilingualLayout: "vertical",
     requestLogging: false,
     builtinApiEnabled: true,
     vocabularyEnabled: false,
     vocabularyAutoSave: true,
     vocabularyMethod: "POST",
-    vocabularyUrl: "http://127.0.0.1:3000/api/v1/words",
-    vocabularyHeaders: "{\n  \"Content-Type\": \"application/json\"\n}",
-    vocabularyBodyTemplate: "{\n  \"headword\": \"{{headword}}\",\n  \"phoneticUs\": \"{{phoneticUs}}\",\n  \"phoneticUk\": \"{{phoneticUk}}\",\n  \"definitionZh\": \"{{definitionZh}}\",\n  \"definitionEn\": \"{{definitionEn}}\"\n}",
+    vocabularyUrl: WORD_BOOK_API_URL,
+    vocabularyRequestTemplate: WORD_BOOK_REQUEST_TEMPLATE,
+    vocabularyAuthCredential: "",
     vocabularyAuthType: "bearer",
-    vocabularyAuthToken: "",
+    vocabularyCustomHeaders: "{}",
     popupLanguage: "all",
     translationMode: "auto-zh-en",
     sourceLanguage: "自动检测",
@@ -287,11 +288,9 @@ const GLOBAL_SETTING_FIELDS = new Set([
   "translationMode",
   "sourceLanguage",
   "targetLanguage",
-  "inputTranslate",
   "requestLogging",
   "builtinApiEnabled",
-  "vocabularyEnabled", "vocabularyAutoSave", "vocabularyMethod", "vocabularyUrl", "vocabularyHeaders", "vocabularyBodyTemplate", "vocabularyAuthType", "vocabularyAuthToken",
-  "inputTriggerSpaces"
+  "vocabularyEnabled", "vocabularyAutoSave", "vocabularyMethod", "vocabularyUrl", "vocabularyRequestTemplate", "vocabularyAuthCredential", "vocabularyAuthType", "vocabularyCustomHeaders",
 ]);
 
 let profiles = [];
@@ -738,18 +737,16 @@ function validateSettingsBeforeSave(nextSettings, nextProfiles) {
       return "单词本 API 地址不是有效的 URL。";
     }
     try {
-      const headers = JSON.parse(nextSettings.vocabularyHeaders);
+      const template = JSON.parse(nextSettings.vocabularyRequestTemplate);
+      if (!template || typeof template !== "object" || Array.isArray(template)) throw new Error();
+    } catch {
+      return "单词本请求参数必须是有效的 JSON 对象。";
+    }
+    try {
+      const headers = JSON.parse(nextSettings.vocabularyCustomHeaders);
       if (!headers || typeof headers !== "object" || Array.isArray(headers)) throw new Error();
     } catch {
-      return "单词本请求头必须是有效的 JSON 对象。";
-    }
-    if (nextSettings.vocabularyMethod === "GET") {
-      try {
-        const template = JSON.parse(nextSettings.vocabularyBodyTemplate);
-        if (!template || typeof template !== "object" || Array.isArray(template)) throw new Error();
-      } catch {
-        return "GET 参数模板必须是有效的 JSON 对象。";
-      }
+      return "自定义请求头必须是有效的 JSON 对象。";
     }
   }
   if (nextSettings.builtinApiEnabled !== false) return "";
@@ -845,9 +842,6 @@ function normalizeSettings(value) {
     hoverModifier: ["ctrl", "alt", "shift", "none"].includes(source.hoverModifier)
       ? source.hoverModifier
       : DEFAULT_CONFIG.settings.hoverModifier,
-    inputTranslate: typeof source.inputTranslate === "boolean"
-      ? source.inputTranslate
-      : DEFAULT_CONFIG.settings.inputTranslate,
     requestLogging: typeof source.requestLogging === "boolean"
       ? source.requestLogging
       : DEFAULT_CONFIG.settings.requestLogging,
@@ -857,22 +851,17 @@ function normalizeSettings(value) {
     vocabularyEnabled: source.vocabularyEnabled === true,
     vocabularyAutoSave: source.vocabularyAutoSave !== false,
     vocabularyMethod: String(source.vocabularyMethod || "POST").toUpperCase() === "GET" ? "GET" : "POST",
-    vocabularyUrl: String(source.vocabularyUrl || "").trim(),
-    vocabularyHeaders: String(source.vocabularyHeaders ?? DEFAULT_CONFIG.settings.vocabularyHeaders),
-    vocabularyBodyTemplate: String(source.vocabularyBodyTemplate ?? DEFAULT_CONFIG.settings.vocabularyBodyTemplate),
-    vocabularyAuthType: ["none", "bearer", "basic"].includes(source.vocabularyAuthType) ? source.vocabularyAuthType : "none",
-    vocabularyAuthToken: String(source.vocabularyAuthToken || ""),
+    vocabularyUrl: String(source.vocabularyUrl || WORD_BOOK_API_URL).trim(),
+    vocabularyRequestTemplate: String(source.vocabularyRequestTemplate || WORD_BOOK_REQUEST_TEMPLATE),
+    vocabularyAuthCredential: String(source.vocabularyAuthCredential || ""),
+    vocabularyAuthType: ["none", "bearer", "basic"].includes(source.vocabularyAuthType) ? source.vocabularyAuthType : DEFAULT_CONFIG.settings.vocabularyAuthType,
+    vocabularyCustomHeaders: String(source.vocabularyCustomHeaders || "{}"),
     popupLanguage: normalizePopupLanguage(source.popupLanguage || DEFAULT_CONFIG.settings.popupLanguage),
     translationMode: ["auto-zh-en", "manual"].includes(source.translationMode)
       ? source.translationMode
       : DEFAULT_CONFIG.settings.translationMode,
     sourceLanguage: String(source.sourceLanguage || DEFAULT_CONFIG.settings.sourceLanguage).trim() || DEFAULT_CONFIG.settings.sourceLanguage,
     targetLanguage: String(source.targetLanguage || DEFAULT_CONFIG.settings.targetLanguage).trim() || DEFAULT_CONFIG.settings.targetLanguage,
-    inputTriggerSpaces: clampNumber(
-      Number(source.inputTriggerSpaces || DEFAULT_CONFIG.settings.inputTriggerSpaces),
-      2,
-      6
-    )
   };
 }
 
@@ -1174,22 +1163,16 @@ function readSettingsFromForm() {
     translationMode,
     sourceLanguage: automatic ? "自动检测" : (form.elements.sourceLanguage.value.trim() || DEFAULT_CONFIG.settings.sourceLanguage),
     targetLanguage: automatic ? "自动检测" : (form.elements.targetLanguage.value.trim() || DEFAULT_CONFIG.settings.targetLanguage),
-    inputTranslate: form.elements.inputTranslate.value === "true",
     requestLogging: form.elements.requestLogging.value === "true",
     builtinApiEnabled: form.elements.builtinApiEnabled.value !== "false",
     vocabularyEnabled: form.elements.vocabularyEnabled.value === "true",
     vocabularyAutoSave: form.elements.vocabularyAutoSave.value !== "false",
     vocabularyMethod: form.elements.vocabularyMethod.value === "GET" ? "GET" : "POST",
-    vocabularyUrl: form.elements.vocabularyUrl.value.trim(),
-    vocabularyHeaders: form.elements.vocabularyHeaders.value.trim() || DEFAULT_CONFIG.settings.vocabularyHeaders,
-    vocabularyBodyTemplate: form.elements.vocabularyBodyTemplate.value,
-    vocabularyAuthType: form.elements.vocabularyAuthType.value || "none",
-    vocabularyAuthToken: form.elements.vocabularyAuthToken.value,
-    inputTriggerSpaces: clampNumber(
-      Number(form.elements.inputTriggerSpaces.value || DEFAULT_CONFIG.settings.inputTriggerSpaces),
-      2,
-      6
-    )
+    vocabularyUrl: form.elements.vocabularyUrl.value.trim() || WORD_BOOK_API_URL,
+    vocabularyRequestTemplate: form.elements.vocabularyRequestTemplate.value || WORD_BOOK_REQUEST_TEMPLATE,
+    vocabularyAuthCredential: form.elements.vocabularyAuthCredential.value,
+    vocabularyAuthType: form.elements.vocabularyAuthType.value || "bearer",
+    vocabularyCustomHeaders: form.elements.vocabularyCustomHeaders.value || "{}",
   };
 }
 

@@ -1,6 +1,7 @@
 "use strict";
 
 const vscode = require("vscode");
+const vocabulary = require("./shared/vocabulary.js");
 
 const ENGLISH_WORD_PATTERN = /^[A-Za-z][A-Za-z'-]*$/;
 const CHINESE_WORD_PATTERN = /^[\u3400-\u9fff]{1,12}$/;
@@ -8,7 +9,10 @@ const translationCache = new Map();
 const pendingTranslations = new Map();
 const wordInfoCache = new Map();
 const pendingWordInfo = new Map();
+const vocabularySaveCoordinator = vocabulary.createSaveCoordinator();
 const PRONUNCIATION_DOMAIN = "https://dict.youdao.com";
+const WORD_BOOK_API_URL = "http://127.0.0.1:3000/api/v1/words";
+const WORD_BOOK_REQUEST_TEMPLATE = "{\n  \"headword\": \"{{headword}}\",\n  \"phoneticUs\": \"{{phoneticUs}}\",\n  \"phoneticUk\": \"{{phoneticUk}}\",\n  \"definitionZh\": \"{{definitionZh}}\",\n  \"definitionEn\": \"{{definitionEn}}\"\n}";
 const TRANSLATION_CACHE_LIMIT = 500;
 const WORD_INFO_CACHE_LIMIT = 1000;
 const TRANSLATION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -444,12 +448,12 @@ function getConfig() {
     timeoutMs: Math.max(1000, Number(settings.get("timeoutMs")) || 45000),
     vocabularyEnabled: settings.get("vocabularyEnabled") === true,
     vocabularyAutoSave: settings.get("vocabularyAutoSave") !== false,
-    vocabularyUrl: String(settings.get("vocabularyUrl") || "").trim(),
     vocabularyMethod: settings.get("vocabularyMethod") === "GET" ? "GET" : "POST",
-    vocabularyHeaders: String(settings.get("vocabularyHeaders") || "{}"),
-    vocabularyAuthType: ["none", "bearer", "basic"].includes(settings.get("vocabularyAuthType")) ? settings.get("vocabularyAuthType") : "none",
-    vocabularyAuthToken: String(settings.get("vocabularyAuthToken") || ""),
-    vocabularyBodyTemplate: String(settings.get("vocabularyBodyTemplate") || "")
+    vocabularyUrl: String(settings.get("vocabularyUrl") || WORD_BOOK_API_URL).trim(),
+    vocabularyRequestTemplate: String(settings.get("vocabularyRequestTemplate") || WORD_BOOK_REQUEST_TEMPLATE),
+    vocabularyAuthCredential: String(settings.get("vocabularyAuthCredential") || ""),
+    vocabularyAuthType: ["none", "bearer", "basic"].includes(settings.get("vocabularyAuthType")) ? settings.get("vocabularyAuthType") : "bearer",
+    vocabularyCustomHeaders: String(settings.get("vocabularyCustomHeaders") || "{}")
   };
 }
 
@@ -458,88 +462,25 @@ async function saveVocabulary(word, wordInfo, config = getConfig()) {
   if (!config.vocabularyUrl) throw new Error("Set AI Translate Hover: Vocabulary Url first.");
   const normalizedWord = String(word || wordInfo?.word || "").trim();
   if (!ENGLISH_WORD_PATTERN.test(normalizedWord)) throw new Error("Vocabulary only supports English words.");
+  return vocabularySaveCoordinator.run(normalizedWord, () => postVocabulary(normalizedWord, wordInfo, config));
+}
 
-  const variables = buildVocabularyVariables(normalizedWord, wordInfo);
-  const headers = parseVocabularyHeaders(config.vocabularyHeaders);
-  applyVocabularyAuth(headers, config);
-  let url = replaceVocabularyTokens(config.vocabularyUrl, variables);
-  let body;
-  const template = replaceVocabularyTemplate(config.vocabularyBodyTemplate, variables);
-  if (config.vocabularyMethod === "GET") {
-    const params = parseVocabularyJson(template, "Vocabulary GET template must be a JSON object.");
-    if (Array.isArray(params) || !params || typeof params !== "object") throw new Error("Vocabulary GET template must be a JSON object.");
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) query.set(key, typeof value === "string" ? value : JSON.stringify(value));
-    if (query.size) url += `${url.includes("?") ? "&" : "?"}${query}`;
-  } else {
-    body = template.trim();
-    if (body && !Object.keys(headers).some((key) => key.toLowerCase() === "content-type")) headers["Content-Type"] = "application/json";
-  }
+async function postVocabulary(normalizedWord, wordInfo, config) {
+  const headers = { "Content-Type": "application/json", ...vocabulary.parseHeaders(config.vocabularyCustomHeaders) };
+  vocabulary.applyAuth(headers, config.vocabularyAuthType, config.vocabularyAuthCredential, (value) => Buffer.from(value, "utf8").toString("base64"));
+  vocabulary.addIdempotencyKey(headers, () => crypto.randomUUID());
+  const payload = vocabulary.buildRequest(config.vocabularyRequestTemplate || WORD_BOOK_REQUEST_TEMPLATE, vocabulary.buildPayload(normalizedWord, wordInfo));
+  const url = config.vocabularyMethod === "GET"
+    ? `${config.vocabularyUrl}${config.vocabularyUrl.includes("?") ? "&" : "?"}${new URLSearchParams(vocabulary.toQueryEntries(payload))}`
+    : config.vocabularyUrl;
+  const body = config.vocabularyMethod === "POST" ? JSON.stringify(payload) : undefined;
   const response = await fetchWithTimeout(url, { method: config.vocabularyMethod, headers, body }, config.timeoutMs);
   const responseText = await response.text();
   if (!response.ok) throw new Error(`Vocabulary request failed (${response.status}): ${responseText || response.statusText}`);
   return { status: response.status };
 }
 
-function buildVocabularyVariables(word, wordInfo = {}) {
-  const definitionZh = (Array.isArray(wordInfo.definitionsZh) ? wordInfo.definitionsZh : []).filter(Boolean).join("；");
-  const definitionEn = (Array.isArray(wordInfo.definitionsEn) ? wordInfo.definitionsEn : []).filter(Boolean).join("; ");
-  const legacyTranslation = (Array.isArray(wordInfo.definitionsZh) ? wordInfo.definitionsZh : []).filter(Boolean).join("; ");
-  return {
-    word,
-    definition: legacyTranslation,
-    phoneticUS: wordInfo.phoneticUS || "",
-    phoneticUK: wordInfo.phoneticUK || "",
-    original: word,
-    translation: legacyTranslation,
-    language: "en",
-    phoneticUs: formatVocabularyPhonetic(wordInfo.phoneticUS),
-    phoneticUk: formatVocabularyPhonetic(wordInfo.phoneticUK),
-    audioUsUrl: wordInfo.speechUrls?.us || "",
-    audioUkUrl: wordInfo.speechUrls?.uk || "",
-    example: "",
-    source: "youdao-mobile",
-    headword: word,
-    phonetic: formatVocabularyPhonetic(wordInfo.phoneticUS || wordInfo.phoneticUK),
-    definitionZh,
-    definitionEn
-  };
-}
 
-function formatVocabularyPhonetic(value) {
-  const phonetic = String(value || "").trim().replace(/^\/+|\/+$/g, "");
-  return phonetic ? `/${phonetic}/` : "";
-}
-
-const VOCABULARY_TEMPLATE_VARIABLES = "word|definition|phoneticUS|phoneticUK|original|translation|language|phoneticUs|phoneticUk|audioUsUrl|audioUkUrl|example|source|headword|phonetic|definitionZh|definitionEn";
-
-function replaceVocabularyTokens(value, variables) {
-  return String(value || "").replace(new RegExp(`{{\\s*(${VOCABULARY_TEMPLATE_VARIABLES})\\s*}}`, "g"), (_, key) => String(variables[key] || ""));
-}
-
-function replaceVocabularyTemplate(value, variables) {
-  const text = String(value || "");
-  return text.replace(new RegExp(`{{\\s*(${VOCABULARY_TEMPLATE_VARIABLES})\\s*}}`, "g"), (match, key, offset) => {
-    const replacement = String(variables[key] || "");
-    return text[offset - 1] === '"' && text[offset + match.length] === '"' ? JSON.stringify(replacement).slice(1, -1) : replacement;
-  });
-}
-
-function parseVocabularyJson(value, errorMessage) {
-  try { return JSON.parse(value); } catch { throw new Error(errorMessage); }
-}
-
-function parseVocabularyHeaders(value) {
-  const headers = parseVocabularyJson(value || "{}", "Vocabulary headers must be a JSON object.");
-  if (!headers || typeof headers !== "object" || Array.isArray(headers)) throw new Error("Vocabulary headers must be a JSON object.");
-  return Object.fromEntries(Object.entries(headers).map(([key, item]) => [String(key), String(item)]));
-}
-
-function applyVocabularyAuth(headers, config) {
-  const token = String(config.vocabularyAuthToken || "").trim();
-  if (!token || config.vocabularyAuthType === "none") return;
-  headers.Authorization = config.vocabularyAuthType === "basic" ? `Basic ${Buffer.from(token, "utf8").toString("base64")}` : `Bearer ${token}`;
-}
 
 function normalizeTriggerMode(value) {
   return ["hover", "keyboard", "hoverAndKeyboard"].includes(value) ? value : "hover";
@@ -720,12 +661,11 @@ module.exports = {
   appendDictionaryMarkdown,
   toVocabularyCommandLink,
   saveVocabulary,
-  buildVocabularyVariables,
-  formatVocabularyPhonetic,
-  replaceVocabularyTokens,
-  replaceVocabularyTemplate,
-  parseVocabularyHeaders,
-  applyVocabularyAuth,
+  buildVocabularyPayload: vocabulary.buildPayload,
+  buildVocabularyRequest: vocabulary.buildRequest,
+  formatVocabularyPhonetic: vocabulary.formatPhonetic,
+  applyVocabularyAuth: (headers, config) => vocabulary.applyAuth(headers, config.vocabularyAuthType, config.vocabularyAuthCredential, (value) => Buffer.from(value, "utf8").toString("base64")),
+  parseVocabularyHeaders: vocabulary.parseHeaders,
   fetchWithTimeout,
   readCache,
   writeCache

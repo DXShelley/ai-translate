@@ -23,33 +23,25 @@ assert.equal(extension.isMostlyChinese("hello world"), false);
 assert.equal(extension.joinUrl("http://localhost:1234/v1/", "/chat/completions"), "http://localhost:1234/v1/chat/completions");
 assert.equal(extension.stripThinking("<think>hidden</think>visible"), "visible");
 assert.deepEqual(
-  extension.buildVocabularyVariables("hello", {
+  extension.buildVocabularyPayload("hello", {
     definitionsZh: ["你好", "问候"],
     phoneticUS: "həˈloʊ",
     phoneticUK: "həˈləʊ",
     speechUrls: { us: "https://example.com/us.mp3", uk: "https://example.com/uk.mp3" }
   }),
   {
-    word: "hello",
-    definition: "你好; 问候",
-    phoneticUS: "həˈloʊ",
-    phoneticUK: "həˈləʊ",
-    original: "hello",
-    translation: "你好; 问候",
-    language: "en",
+    headword: "hello",
     phoneticUs: "/həˈloʊ/",
     phoneticUk: "/həˈləʊ/",
-    audioUsUrl: "https://example.com/us.mp3",
-    audioUkUrl: "https://example.com/uk.mp3",
-    example: "",
-    source: "youdao-mobile",
-    headword: "hello",
-    phonetic: "/həˈloʊ/",
     definitionZh: "你好；问候",
-    definitionEn: ""
+    definitionEn: "",
+    word: "hello",
+    definition: "你好；问候",
+    phoneticUS: "/həˈloʊ/",
+    phoneticUK: "/həˈləʊ/"
   }
 );
-assert.equal(extension.replaceVocabularyTemplate('{"word":"{{word}}"}', { word: "hello" }), '{"word":"hello"}');
+assert.deepEqual(extension.buildVocabularyRequest('{"term":"{{headword}}","meaning":"{{definitionZh}}"}', { headword: "hello", definitionZh: "你好" }), { term: "hello", meaning: "你好" });
 assert.equal(
   extension.parseYoudaoMobileTranslation('<ul id="translateResult"><li>翻译 &amp; 释义</li><li><b>第二行</b></li></ul>'),
   "翻译 & 释义\n第二行"
@@ -186,7 +178,9 @@ async function verifyVocabularySave() {
     request.on("end", () => {
       assert.equal(request.method, "POST");
       assert.equal(request.headers.authorization, "Bearer vocabulary-token");
+      assert.equal(request.headers["x-client-id"], "test-client");
       assert.equal(request.headers["content-type"], "application/json");
+      assert.match(request.headers["idempotency-key"], /^ai-translate-[A-Za-z0-9-]+$/);
       assert.deepEqual(JSON.parse(body), {
         headword: "translation",
         phoneticUs: "/tranz/",
@@ -209,10 +203,8 @@ async function verifyVocabularySave() {
       vocabularyEnabled: true,
       vocabularyUrl: `http://127.0.0.1:${server.address().port}/vocabulary`,
       vocabularyMethod: "POST",
-      vocabularyHeaders: "{}",
-      vocabularyAuthType: "bearer",
-      vocabularyAuthToken: "vocabulary-token",
-      vocabularyBodyTemplate: "{\"headword\":\"{{headword}}\",\"phoneticUs\":\"{{phoneticUs}}\",\"phoneticUk\":\"{{phoneticUk}}\",\"definitionZh\":\"{{definitionZh}}\",\"definitionEn\":\"{{definitionEn}}\"}",
+      vocabularyAuthCredential: "vocabulary-token",
+      vocabularyCustomHeaders: "{\"X-Client-Id\":\"test-client\"}",
       timeoutMs: 1000
     });
     assert.deepEqual(result, { status: 201 });

@@ -1,5 +1,13 @@
 # 更新日志
 
+## v7.0.0
+
+### 跨插件单词本可靠性
+
+- 浏览器、VS Code 和 Obsidian 统一复用单词本请求模块，支持一致的请求模板、认证、旧模板变量、GET 参数编码和 `Idempotency-Key`。
+- 同一词条的并发保存会合并为一次请求；单词本服务的唯一或主键约束冲突统一以 `409 Conflict` 表达。
+- 新增浏览器后台与 Obsidian 构建产物的自动化覆盖，并刷新 Chrome、Edge、Firefox、VSIX 和 Obsidian 发布物。
+
 ## v6.0.2
 
 ### 单词本 API 契约

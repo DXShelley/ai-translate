@@ -102,6 +102,7 @@ async function buildBrowser(browser) {
       // MV2: bundle in order
       for (const script of bgConfig.scripts) {
         if (script === 'background.js') {
+          bgCode += `/* Shared vocabulary */\n${readFile('shared/vocabulary.js')}\n`;
           bgCode += `/* Source: background.js */\n${stripBackgroundLoaders(readFile(path.join(srcDir, 'background.js')))}\n`;
         } else if (script.startsWith('vendor/') || script === 'browser-adapter.js') {
           const vendorFile = script === 'browser-adapter.js' ? 'browser-adapter.js' : script;
@@ -118,6 +119,7 @@ async function buildBrowser(browser) {
         }
       }
       bgCode += `/* Browser adapter */\n${readFile(path.join(outDir, 'browser-adapter.js'))}\n`;
+      bgCode += `/* Shared vocabulary */\n${readFile('shared/vocabulary.js')}\n`;
       bgCode += `/* Source: background.js */\n${stripBackgroundLoaders(readFile(path.join(srcDir, 'background.js')))}\n`;
     }
 
