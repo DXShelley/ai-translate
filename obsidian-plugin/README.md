@@ -1,29 +1,50 @@
-# AI Translate for Obsidian
+# AI Translate - Obsidian Plugin
 
-AI Translate provides dictionary lookup, selected-text translation, and optional external vocabulary API integration for Obsidian.
+AI Translate adds dictionary lookup and selected-text translation to Obsidian. It can use the built-in Youdao mobile services first, then fall back to an OpenAI-compatible API. English dictionary results can optionally be sent to an external vocabulary service.
 
-在 Obsidian `1.12.4` 及以上版本的编辑器中提供单独查词、选中查词/翻译，以及与主项目一致的外部单词本适配。
+## Requirements
 
-## 功能
+- Obsidian `1.12.4` or newer.
+- An OpenAI-compatible endpoint only when the built-in Youdao service is unavailable or disabled.
 
-- 命令面板 `AI Translate: 查词或翻译`：输入英文单词或任意待翻译文本。
-- 命令面板 `AI Translate: 查询选中文本`，以及编辑器右键菜单：对选中的英文单词显示词典，对其他文本翻译。
-- 英文单词优先使用有道移动词典，展示音标、英美发音、中英文释义；服务不可用时回退到配置的 OpenAI 兼容 API。
-- 支持外部单词本 `POST`/`GET`、自定义 JSON 请求头、Bearer/Basic/无认证和请求参数变量。自动收藏不会阻塞查词；关闭自动收藏后，结果窗口显示手动收藏按钮。同一词条尚未完成的保存会合并，实际写入默认附带 `Idempotency-Key`；自定义的同名请求头优先。
+## Install
 
-## 构建和安装
+### Community plugins
 
-```bash
-cd obsidian-plugin
-npm install
-npm run build
-```
+After the plugin is approved in the Obsidian Community directory, open **Settings > Community plugins**, search for **AI Translate**, and install it.
 
-将构建出的 `main.js` 和本目录的 `manifest.json` 复制到 Vault 的 `.obsidian/plugins/ai-translate/`，然后在 Obsidian 的社区插件设置页启用 `AI Translate`。
+### GitHub release
 
-## 单词本模板
+1. Download `main.js`, `manifest.json`, and `styles.css` from the GitHub release whose tag exactly matches the plugin version. Obsidian releases use tags without a `v` prefix.
+2. Create `.obsidian/plugins/ai-translate/` inside your vault.
+3. Copy the three files into that folder.
+4. Enable **AI Translate** in **Settings > Community plugins**.
 
-默认 POST 请求参数：
+## Use
+
+- Run **AI Translate: Lookup or translate** from the Command Palette to enter text manually.
+- Run **AI Translate: Look up selected text**, or select text and use the editor context menu.
+- A single English word opens a dictionary result with phonetics, definitions, and available UK/US pronunciation audio.
+- Other selected text is translated. Chinese input is translated to English; other languages use the configured target language.
+
+## Settings
+
+| Setting | Description |
+| --- | --- |
+| Built-in Youdao service | Uses Youdao mobile dictionary and translation services before the configured API. |
+| API Base URL | The base URL of an OpenAI-compatible API, for example `http://localhost:1234/v1`. |
+| Endpoint Path | Usually `/chat/completions`. |
+| Model | The model sent to the fallback API. |
+| API Key | Optional bearer token for the fallback API. |
+| Target language | Translation target for non-Chinese text. |
+
+On Obsidian `1.13.0` and later, all settings are registered with the declarative settings API and are available through Settings search.
+
+## External vocabulary API
+
+External vocabulary integration is off by default. When enabled, successful English dictionary lookups can be saved automatically or manually. Saving is asynchronous and never blocks lookup or translation.
+
+The default `POST` JSON request body is:
 
 ```json
 {
@@ -35,4 +56,28 @@ npm run build
 }
 ```
 
-可用变量：`{{headword}}`、`{{phoneticUs}}`、`{{phoneticUk}}`、`{{definitionZh}}`、`{{definitionEn}}`。可按目标单词本的字段名改写 JSON；GET 会将一级字段转换为 URL 查询参数。自定义认证和特殊请求头在“自定义请求头（JSON）”中填写。
+Available placeholders are `{{headword}}`, `{{phoneticUs}}`, `{{phoneticUk}}`, `{{definitionZh}}`, and `{{definitionEn}}`. Legacy aliases `{{word}}`, `{{definition}}`, `{{phoneticUS}}`, and `{{phoneticUK}}` are also supported.
+
+The integration supports `POST` and `GET`, custom JSON headers, and Bearer, Basic, or no authentication. Requests include an `Idempotency-Key` unless a custom header already provides one. Concurrent saves for the same word are merged into one request.
+
+## Privacy
+
+AI Translate does not collect or transmit data to an operator-controlled service. Dictionary and translation requests go only to Youdao or to the OpenAI-compatible endpoint configured by the user. External vocabulary requests are sent only when the user enables and configures that integration.
+
+## Build from source
+
+```sh
+cd obsidian-plugin
+npm ci
+npm run check
+```
+
+`npm run check` builds `main.js`, runs TypeScript validation, and executes the plugin tests.
+
+For an Obsidian-only release build from the repository root:
+
+```sh
+npm run release:obsidian
+```
+
+The release assets are written to `dist/release/obsidian/<version>/`.

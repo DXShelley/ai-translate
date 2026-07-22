@@ -1,4 +1,4 @@
-import { App, Editor, Modal, Notice, Plugin, PluginSettingTab, Setting, requestUrl, setIcon } from "obsidian";
+import { App, Editor, Modal, Notice, Plugin, PluginSettingTab, Setting, requestUrl, setIcon, type SettingDefinitionItem } from "obsidian";
 import vocabularyModule from "../../shared/vocabulary.js";
 
 type VocabularyApi = {
@@ -114,7 +114,7 @@ export default class AITranslatePlugin extends Plugin {
     return info;
   }
 
-  async translate(text: string) {
+  async translate(text: string): Promise<string> {
     if (this.settings.builtinApiEnabled) {
       const builtin = await requestYoudaoTranslation(text).catch(() => "");
       if (builtin) return builtin;
@@ -122,8 +122,7 @@ export default class AITranslatePlugin extends Plugin {
     const url = joinUrl(this.settings.baseUrl, this.settings.endpointPath);
     const result = await requestUrl({ url, method: "POST", headers: { "Content-Type": "application/json", ...(this.settings.apiKey ? { Authorization: `Bearer ${this.settings.apiKey}` } : {}) }, body: JSON.stringify({ model: this.settings.model, temperature: 0.2, messages: [{ role: "system", content: "You are a precise translation engine. Return only the translation. Do not explain." }, { role: "user", content: `Translate the following text to ${isMostlyChinese(text) ? "English" : this.settings.targetLanguage}.\n\nText: ${text}` }] }), throw: false });
     if (result.status < 200 || result.status >= 300) throw new Error(`翻译接口请求失败 (${result.status}): ${result.text}`);
-    const body = result.json as { choices?: Array<{ message?: { content?: string } }>; output_text?: string };
-    const translation = String(body.choices?.[0]?.message?.content || body.output_text || "").replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, "").trim();
+    const translation = extractTranslation(result.text);
     if (!translation) throw new Error("翻译接口未返回文本");
     return translation;
   }
@@ -224,6 +223,52 @@ class ResultModal extends Modal {
 
 class AITranslateSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: AITranslatePlugin) { super(app, plugin); }
+
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    const vocabularyFieldsVisible = () => this.plugin.settings.vocabularyEnabled;
+    return [
+      {
+        type: "group",
+        heading: "AI Translate",
+        items: [
+          { name: "内置有道服务", desc: "优先使用有道移动词典和翻译；不可用时使用 OpenAI 兼容接口。", control: { type: "toggle", key: "builtinApiEnabled" } },
+          { name: "API Base URL", desc: "OpenAI 兼容 API，例如 http://localhost:1234/v1", control: { type: "text", key: "baseUrl" } },
+          { name: "Endpoint Path", desc: "通常为 /chat/completions", control: { type: "text", key: "endpointPath" } },
+          { name: "Model", desc: "内置服务不可用时使用的模型", control: { type: "text", key: "model" } },
+          { name: "API Key", desc: "可选", control: { type: "text", key: "apiKey" } },
+          { name: "目标语言", desc: "非中文文本的翻译目标", control: { type: "text", key: "targetLanguage" } }
+        ]
+      },
+      {
+        type: "group",
+        heading: "外部单词本",
+        items: [
+          { name: "启用单词本适配", desc: "仅提交英文单词查询结果；请求失败不影响查词。", control: { type: "toggle", key: "vocabularyEnabled" } },
+          { name: "查询后自动收藏", desc: "关闭后，在查词结果中手动收藏。", visible: vocabularyFieldsVisible, control: { type: "toggle", key: "vocabularyAutoSave" } },
+          { name: "单词本 API 地址", desc: "完整 URL", visible: vocabularyFieldsVisible, control: { type: "text", key: "vocabularyUrl" } },
+          { name: "请求方法", visible: vocabularyFieldsVisible, control: { type: "dropdown", key: "vocabularyMethod", options: { POST: "POST", GET: "GET" } } },
+          { name: "请求参数（JSON）", desc: "支持 headword、phoneticUs、phoneticUk、definitionZh、definitionEn", visible: vocabularyFieldsVisible, control: { type: "textarea", key: "vocabularyRequestTemplate", rows: 4 } },
+          { name: "认证方式", visible: vocabularyFieldsVisible, control: { type: "dropdown", key: "vocabularyAuthType", options: { none: "无", bearer: "Bearer Token", basic: "Basic" } } },
+          { name: "认证凭据", desc: "有认证时填写；无认证时留空", visible: vocabularyFieldsVisible, control: { type: "text", key: "vocabularyAuthCredential" } },
+          { name: "自定义请求头（JSON）", desc: "可填写自定义认证或特殊请求头", visible: vocabularyFieldsVisible, control: { type: "textarea", key: "vocabularyCustomHeaders", rows: 4 } }
+        ]
+      }
+    ];
+  }
+
+  getControlValue(key: string): unknown {
+    return this.plugin.settings[key as keyof AITranslateSettings];
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    if (!isSettingsKey(key)) return;
+    const currentValue = this.plugin.settings[key];
+    if (typeof value !== typeof currentValue) return;
+    this.plugin.settings[key] = value as never;
+    await this.plugin.saveSettings();
+    if (key === "vocabularyEnabled") this.update();
+  }
+
   display() {
     const { containerEl } = this; containerEl.empty();
     new Setting(containerEl).setName("AI Translate").setHeading();
@@ -267,8 +312,46 @@ function appendList(parent: HTMLElement, title: string, values: string[], langua
   const list = section.createEl("ul", { cls: "ai-translate-definition-list" });
   values.slice(0, 8).forEach((value) => list.createEl("li", { text: value }));
 }
-async function requestYoudaoTranslation(text: string) { const result = await requestUrl({ url: "https://mobile.youdao.com/translate", method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept-Language": "zh-CN,zh;q=0.9" }, body: new URLSearchParams({ inputtext: text, type: "AUTO" }).toString(), throw: false }); if (result.status !== 200) return ""; const doc = new DOMParser().parseFromString(result.text, "text/html"); return Array.from(doc.querySelectorAll("#translateResult li")).map((item) => item.textContent?.trim() || "").filter(Boolean).join("\n"); }
-async function requestYoudaoWordInfo(word: string): Promise<WordInfo | null> { const [dictionary, english] = await Promise.all([requestUrl({ url: `https://mobile.youdao.com/dict?le=eng&q=${encodeURIComponent(word)}`, throw: false }), requestUrl({ url: `https://mobile.youdao.com/singledict?q=${encodeURIComponent(word)}&dict=ee&le=eng&more=false`, throw: false })]); if (dictionary.status !== 200) return null; const doc = new DOMParser().parseFromString(dictionary.text, "text/html"); const section = doc.querySelector("#ec"); if (!section) return null; const getPhonetic = (label: string) => Array.from(section.querySelectorAll("span")).find((element) => element.textContent?.includes(label))?.parentElement?.querySelector(".phonetic")?.textContent?.replaceAll("[", "").replaceAll("]", "").trim() || ""; const getAudio = (type: string) => Array.from(section.querySelectorAll("[data-rel]")).map((element) => element.getAttribute("data-rel") || "").find((url) => url.includes(`type=${type}`)) || ""; const definitionsZh = Array.from(section.querySelectorAll("ul li")).map((item) => item.textContent?.replace(/\s+/g, " ").trim() || "").filter(Boolean); const definitionsEn = english.status === 200 ? Array.from(new DOMParser().parseFromString(english.text, "text/html").querySelectorAll("li.per-tran")).map((item) => item.textContent?.replace(/^\s*(\d+|[a-z]+)\.\s*/i, "").trim() || "").filter(Boolean) : []; return { word, phoneticUS: getPhonetic("美"), phoneticUK: getPhonetic("英"), definitionsZh: [...new Set(definitionsZh)], definitionsEn: [...new Set(definitionsEn)], speechUrls: { uk: normalizeAudio(getAudio("1")), us: normalizeAudio(getAudio("2")) } }; }
+function extractTranslation(text: string): string {
+  try {
+    const response: unknown = JSON.parse(text);
+    if (!isRecord(response)) return "";
+    const choices = response.choices;
+    const firstChoice = Array.isArray(choices) && isRecord(choices[0]) ? choices[0] : undefined;
+    const message = firstChoice && isRecord(firstChoice.message) ? firstChoice.message : undefined;
+    const content = message?.content ?? response.output_text;
+    return typeof content === "string" ? content.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, "").trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSettingsKey(key: string): key is keyof AITranslateSettings {
+  return key in DEFAULT_SETTINGS;
+}
+
+async function requestYoudaoTranslation(text: string): Promise<string> {
+  const result = await requestUrl({ url: "https://mobile.youdao.com/translate", method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept-Language": "zh-CN,zh;q=0.9" }, body: new URLSearchParams({ inputtext: text, type: "AUTO" }).toString(), throw: false });
+  if (result.status !== 200) return "";
+  const doc = new DOMParser().parseFromString(result.text, "text/html");
+  return Array.from(doc.querySelectorAll("#translateResult li")).map((item) => item.textContent?.trim() || "").filter(Boolean).join("\n");
+}
+
+async function requestYoudaoWordInfo(word: string): Promise<WordInfo | null> {
+  const [dictionary, english] = await Promise.all([requestUrl({ url: `https://mobile.youdao.com/dict?le=eng&q=${encodeURIComponent(word)}`, throw: false }), requestUrl({ url: `https://mobile.youdao.com/singledict?q=${encodeURIComponent(word)}&dict=ee&le=eng&more=false`, throw: false })]);
+  if (dictionary.status !== 200) return null;
+  const section = new DOMParser().parseFromString(dictionary.text, "text/html").querySelector("#ec");
+  if (!section) return null;
+  const getPhonetic = (label: string) => Array.from(section.querySelectorAll("span")).find((element) => element.textContent?.includes(label))?.parentElement?.querySelector(".phonetic")?.textContent?.replaceAll("[", "").replaceAll("]", "").trim() || "";
+  const getAudio = (type: string) => Array.from(section.querySelectorAll("[data-rel]")).map((element) => element.getAttribute("data-rel") || "").find((url) => url.includes(`type=${type}`)) || "";
+  const definitionsZh = Array.from(section.querySelectorAll("ul li")).map((item) => item.textContent?.replace(/\s+/g, " ").trim() || "").filter(Boolean);
+  const definitionsEn = english.status === 200 ? Array.from(new DOMParser().parseFromString(english.text, "text/html").querySelectorAll("li.per-tran")).map((item) => item.textContent?.replace(/^\s*(\d+|[a-z]+)\.\s*/i, "").trim() || "").filter(Boolean) : [];
+  return { word, phoneticUS: getPhonetic("美"), phoneticUK: getPhonetic("英"), definitionsZh: [...new Set(definitionsZh)], definitionsEn: [...new Set(definitionsEn)], speechUrls: { uk: normalizeAudio(getAudio("1")), us: normalizeAudio(getAudio("2")) } };
+}
 function normalizeAudio(url: string) { try { const parsed = new URL(url.startsWith("//") ? `https:${url}` : url); return parsed.protocol === "https:" && parsed.hostname === "dict.youdao.com" ? parsed.href : ""; } catch { return ""; } }
 function isMostlyChinese(text: string) { const normalized = text.replace(/\s+/g, ""); const chinese = (normalized.match(/[\u3400-\u9fff]/g) || []).length; const latin = (normalized.match(/[A-Za-z]/g) || []).length; return chinese > 0 && chinese / Math.max(1, chinese + latin) >= 0.3; }
 function joinUrl(base: string, path: string) { return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`; }
