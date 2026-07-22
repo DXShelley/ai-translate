@@ -3,7 +3,7 @@
   "displayName": "AI Translate Hover",
   "description": "Translate a selected word after hovering it for one second.",
   "icon": "media/icon.png",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "publisher": "DxShelley",
   "license": "MIT",
   "author": {
