@@ -42,7 +42,7 @@ All plugins use major version `7`. Obsidian patch versions may advance independe
 - Run **AI Translate: Look up selected text** from the editor menu or Command Palette.
 - Show phonetics, Chinese and English definitions, and available pronunciation audio for English words.
 - Use built-in Youdao mobile services first and an OpenAI-compatible endpoint as fallback.
-- Support Obsidian `1.12.7` and later through one settings implementation shared by all supported app versions.
+- Support Obsidian `1.12.2` and later through one settings implementation shared by all supported app versions.
 - Send vocabulary requests independently so a vocabulary API failure does not break lookup or translation.
 
 See [AI Translate - Obsidian Plugin](obsidian-plugin/README.md) for the complete Obsidian installation, settings, privacy, and request-template reference.

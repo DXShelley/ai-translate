@@ -19,7 +19,7 @@ AI Translate 是贴合 Obsidian 阅读与写作流程的查词翻译插件。选
 
 ## 要求
 
-- Obsidian `1.12.7` 或更高版本。
+- Obsidian `1.12.2` 或更高版本。
 - 仅当内置有道服务不可用或被关闭时，才需要可用的 OpenAI-compatible API。
 
 ## 安装
@@ -129,7 +129,7 @@ npm run check
 
 `npm run check` 会构建 `main.js`、进行 TypeScript 校验并执行插件测试。
 
-插件使用 npm 已发布的最新 `1.12.x` Obsidian API 类型包（`1.12.3`）编译，并在 manifest 中声明最低应用版本为 Obsidian `1.12.7`。设置页使用传统 `PluginSettingTab.display()` API，从而让 `1.12.7` 与更新版本共用同一套字段定义，避免两套设置长期漂移。
+插件使用 Obsidian `1.12.2` API 类型包编译，并在 manifest 中声明最低应用版本为 Obsidian `1.12.2`。设置页使用传统 `PluginSettingTab.display()` API，从而让 `1.12.2` 与更新版本共用同一套字段定义，避免两套设置长期漂移。
 
 在仓库根目录单独构建 Obsidian 发布包：
 

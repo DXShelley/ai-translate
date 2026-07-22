@@ -19,7 +19,7 @@ AI Translate fits into your Obsidian reading and writing flow. Select text to lo
 
 ## Requirements
 
-- Obsidian `1.12.7` or newer.
+- Obsidian `1.12.2` or newer.
 - An OpenAI-compatible endpoint only when the built-in Youdao service is unavailable or disabled.
 
 ## Install
@@ -104,7 +104,7 @@ npm run check
 
 `npm run check` builds `main.js`, runs TypeScript validation, and executes the plugin tests.
 
-The plugin compiles against the latest published `1.12.x` Obsidian API type package (`1.12.3`) and declares Obsidian `1.12.7` as its minimum app version. It deliberately uses the traditional `PluginSettingTab.display()` API so the same settings page runs on `1.12.7` and newer releases without maintaining a second set of field definitions.
+The plugin compiles against the Obsidian `1.12.2` API type package and declares Obsidian `1.12.2` as its minimum app version. It deliberately uses the traditional `PluginSettingTab.display()` API so the same settings page runs on `1.12.2` and newer releases without maintaining a second set of field definitions.
 
 For an Obsidian-only release build from the repository root:
 

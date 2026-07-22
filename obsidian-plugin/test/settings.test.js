@@ -50,13 +50,13 @@ test("fallback translation never sends a removed API key", async () => {
   assert.equal("Authorization" in request.headers, false);
 });
 
-test("keeps root and plugin manifests compatible with Obsidian 1.12.7", () => {
+test("keeps root and plugin manifests compatible with Obsidian 1.12.2", () => {
   const pluginRoot = path.join(__dirname, "..");
   const manifests = [
     path.join(pluginRoot, "manifest.json"),
     path.join(pluginRoot, "..", "manifest.json"),
   ].map((manifestPath) => JSON.parse(fs.readFileSync(manifestPath, "utf8")));
-  assert.ok(manifests.every((manifest) => manifest.minAppVersion === "1.12.7"));
+  assert.ok(manifests.every((manifest) => manifest.minAppVersion === "1.12.2"));
   assert.equal(manifests[0].version, manifests[1].version);
 });
 
