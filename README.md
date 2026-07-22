@@ -1,5 +1,7 @@
 # AI Translate
 
+AI Translate is a suite of browser, VS Code, and Obsidian plugins for dictionary lookup and selected-text translation. The Obsidian plugin also supports optional external vocabulary API integration.
+
 一个浏览器扩展原型，用于在网页中进行本地或 OpenAI 兼容模型翻译。扩展重点支持划词、句子、段落三种粒度，并在同一弹框内复用上下文和已返回结果，减少重复请求。
 
 项目包含两类插件：浏览器扩展与 VS Code 扩展。浏览器扩展提供网页划词、句子和段落翻译；VS Code 扩展面向中文用户阅读英文 Skill 文档，提供选词悬停词典和翻译辅助。

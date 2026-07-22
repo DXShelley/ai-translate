@@ -1,5 +1,7 @@
 # AI Translate for Obsidian
 
+AI Translate provides dictionary lookup, selected-text translation, and optional external vocabulary API integration for Obsidian.
+
 在 Obsidian `1.12.4` 及以上版本的编辑器中提供单独查词、选中查词/翻译，以及与主项目一致的外部单词本适配。
 
 ## 功能

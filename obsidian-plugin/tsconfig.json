@@ -5,6 +5,7 @@
     "inlineSources": true,
     "module": "ESNext",
     "target": "ES2022",
+    "allowJs": true,
     "moduleResolution": "node",
     "importHelpers": true,
     "isolatedModules": true,

@@ -1,6 +1,6 @@
 {
   "name": "ai-translate-obsidian",
-  "version": "7.0.3",
+  "version": "7.0.4",
   "description": "AI Translate dictionary and translation plugin for Obsidian",
   "private": true,
   "scripts": {
