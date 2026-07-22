@@ -192,6 +192,7 @@ async function buildBrowser(browser) {
 // Create zip
 function createZip(dir, outputZip) {
   const { execFileSync } = require('child_process');
+  const python = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
   const tempZip = `${outputZip}.tmp`;
   const zipScript = `
 import os, sys, zipfile
@@ -211,7 +212,7 @@ with zipfile.ZipFile(output_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
 os.replace(output_zip, final_zip)
 print(f'Created {final_zip}: {os.path.getsize(final_zip)} bytes')
 `;
-  execFileSync('python', ['-c', zipScript, dir, tempZip, outputZip], { encoding: 'utf8', stdio: 'inherit' });
+  execFileSync(python, ['-c', zipScript, dir, tempZip, outputZip], { encoding: 'utf8', stdio: 'inherit' });
 }
 
 // Main
