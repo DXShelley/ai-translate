@@ -1,7 +1,7 @@
 {
   "id": "ai-translate",
   "name": "AI Translate",
-  "version": "7.0.2",
+  "version": "7.0.3",
   "minAppVersion": "1.12.4",
   "description": "单独查词、选中查词、翻译与外部单词本适配。",
   "author": "DxShelley",
