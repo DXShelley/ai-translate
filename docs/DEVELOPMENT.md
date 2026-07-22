@@ -556,4 +556,5 @@ powershell -ExecutionPolicy Bypass -File scripts\sync-dev-to-main.ps1 -Push
 2. 再同步必要文件到 `main`。
 3. 推送时同时推送 `dev` 和 `main`。
 4. 发布版本时在 `main` 上打 tag。
-5. 每次发布必须先执行 `npm run build` 和 `vscode-extension/npm run check`、`vscode-extension/npm run package`，验证浏览器 zip 与 VSIX 版本一致。
+5. 所有插件的主版本号必须一致。全平台 Release 必须执行 `npm run release:all`，构建 Chrome、Edge、Firefox、VS Code 与 Obsidian；浏览器和 VS Code 产物从 `dist/release/all/<version>/` 上传到 `v<version>` 标签的 Release。
+6. Obsidian 产物位于 `dist/release/obsidian/<version>/`，仅上传其中的 `main.js`、`manifest.json`、`styles.css`，Release 标签必须为无 `v` 前缀的 `<version>`。Obsidian 可独立递增补丁版本，但不得改变其主版本号。

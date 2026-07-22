@@ -11,6 +11,8 @@
     "build:firefox": "node scripts/build.js firefox",
     "build:chrome": "node scripts/build.js chrome",
     "build:edge": "node scripts/build.js edge",
+    "release:all": "node scripts/release-all.js",
+    "release:obsidian": "node scripts/release-all.js --obsidian",
     "test": "npm run build && node --test test/*.test.js"
   },
   "keywords": [],

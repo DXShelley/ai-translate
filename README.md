@@ -11,6 +11,24 @@
 
 VS Code 扩展最低兼容版本为 `1.85.0`，完整兼容性说明见 [`vscode-extension/README.md`](vscode-extension/README.md)。
 
+## 发布构建
+
+所有插件必须保持相同的主版本号。全平台发布构建 Chrome、Edge、Firefox、VS Code 与 Obsidian：
+
+```sh
+npm run release:all
+```
+
+浏览器和 VS Code 产物写入 `dist/release/all/<version>/`，GitHub Release 使用 `v<version>` 标签；Obsidian 产物同时写入 `dist/release/obsidian/<version>/`，需要创建单独的无 `v` 前缀 Release。
+
+Obsidian 可独立发布：
+
+```sh
+npm run release:obsidian
+```
+
+产物写入 `dist/release/obsidian/<version>/`。该 GitHub Release 标签必须使用 `<version>`，不能带 `v` 前缀，并且只上传 `main.js`、`manifest.json`、`styles.css`。Obsidian 的补丁版本可独立递增，但主版本号必须与其他插件一致。
+
 VS Code 扩展主要面向中文用户阅读英文 Skill 文档的场景，提供选词悬停词典和翻译辅助。
 
 ## 功能
