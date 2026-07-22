@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 const { minify: terserMinify } = require('terser');
 const CleanCSS = require('clean-css');
 
@@ -18,19 +17,6 @@ function readFile(file) {
 function writeFile(file, content) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
-}
-
-// Bundler: prepend vendor code to script
-function bundleWithVendor(scriptPath, vendorFiles, vendorDir) {
-  let code = '';
-  for (const vf of vendorFiles) {
-    const fullPath = path.join(vendorDir, vf);
-    if (fs.existsSync(fullPath)) {
-      code += `/* Vendor: ${vf} */\n${readFile(fullPath)}\n\n`;
-    }
-  }
-  code += `/* Source: ${path.basename(scriptPath)} */\n${readFile(scriptPath)}`;
-  return code;
 }
 
 function stripBackgroundLoaders(code) {
@@ -190,29 +176,29 @@ async function buildBrowser(browser) {
 }
 
 // Create zip
-function createZip(dir, outputZip) {
-  const { execFileSync } = require('child_process');
-  const python = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+async function createZip(dir, outputZip) {
+  const { ZipArchive } = await import('archiver');
   const tempZip = `${outputZip}.tmp`;
-  const zipScript = `
-import os, sys, zipfile
-source_dir, output_zip, final_zip = sys.argv[1], sys.argv[2], sys.argv[3]
-files = []
-for root, dirs, filenames in os.walk(source_dir):
-    for filename in filenames:
-        if filename == 'install.rdf':
-            continue
-        file_path = os.path.join(root, filename)
-        arcname = os.path.relpath(file_path, source_dir)
-        files.append((file_path, arcname))
-files.sort(key=lambda x: (0 if x[1] == 'manifest.json' else 1, x[1]))
-with zipfile.ZipFile(output_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
-    for file_path, arcname in files:
-        zf.write(file_path, arcname)
-os.replace(output_zip, final_zip)
-print(f'Created {final_zip}: {os.path.getsize(final_zip)} bytes')
-`;
-  execFileSync(python, ['-c', zipScript, dir, tempZip, outputZip], { encoding: 'utf8', stdio: 'inherit' });
+  const files = fs.readdirSync(dir, { recursive: true })
+    .filter((file) => typeof file === 'string' && file !== 'install.rdf')
+    .filter((file) => fs.statSync(path.join(dir, file)).isFile())
+    .sort((left, right) => (left === 'manifest.json' ? -1 : right === 'manifest.json' ? 1 : left.localeCompare(right)));
+
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(tempZip);
+    const archive = new ZipArchive({ zlib: { level: 9 } });
+    output.on('close', () => {
+      fs.rmSync(outputZip, { force: true });
+      fs.renameSync(tempZip, outputZip);
+      console.log(`Created ${outputZip}: ${archive.pointer()} bytes`);
+      resolve();
+    });
+    output.on('error', reject);
+    archive.on('error', reject);
+    archive.pipe(output);
+    for (const file of files) archive.file(path.join(dir, file), { name: file });
+    void archive.finalize();
+  });
 }
 
 // Main
@@ -221,7 +207,7 @@ async function main() {
 
   for (const browser of browsers) {
     await buildBrowser(browser);
-    createZip(path.join(outPath, browser), `AI-Translate-${browser}.zip`);
+    await createZip(path.join(outPath, browser), `AI-Translate-${browser}.zip`);
   }
 
   console.log('\n=== Build Complete ===');

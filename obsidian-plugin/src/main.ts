@@ -267,28 +267,7 @@ class AITranslateSettingTab extends PluginSettingTab {
     if (key === "vocabularyEnabled") this.update();
   }
 
-  display() {
-    const { containerEl } = this; containerEl.empty();
-    new Setting(containerEl).setName("Translation").setHeading();
-    new Setting(containerEl).setName("内置有道服务").setDesc("优先使用有道移动词典和翻译；不可用时使用 OpenAI 兼容接口。").addToggle((toggle) => toggle.setValue(this.plugin.settings.builtinApiEnabled).onChange(async (value) => { this.plugin.settings.builtinApiEnabled = value; await this.plugin.saveSettings(); }));
-    textSetting(containerEl, "API Base URL", "OpenAI 兼容 API，例如 http://localhost:1234/v1", this.plugin.settings.baseUrl, async (value) => { this.plugin.settings.baseUrl = value; await this.plugin.saveSettings(); });
-    textSetting(containerEl, "Endpoint Path", "通常为 /chat/completions", this.plugin.settings.endpointPath, async (value) => { this.plugin.settings.endpointPath = value; await this.plugin.saveSettings(); });
-    textSetting(containerEl, "Model", "内置服务不可用时使用的模型", this.plugin.settings.model, async (value) => { this.plugin.settings.model = value; await this.plugin.saveSettings(); });
-    textSetting(containerEl, "目标语言", "非中文文本的翻译目标", this.plugin.settings.targetLanguage, async (value) => { this.plugin.settings.targetLanguage = value; await this.plugin.saveSettings(); });
-    new Setting(containerEl).setName("外部单词本").setHeading();
-    new Setting(containerEl).setName("启用单词本适配").setDesc("仅提交英文单词查询结果；请求失败不影响查词。").addToggle((toggle) => toggle.setValue(this.plugin.settings.vocabularyEnabled).onChange(async (value) => { this.plugin.settings.vocabularyEnabled = value; await this.plugin.saveSettings(); this.display(); }));
-    if (!this.plugin.settings.vocabularyEnabled) return;
-    new Setting(containerEl).setName("查询后自动收藏").setDesc("关闭后，在查词结果中手动收藏。").addToggle((toggle) => toggle.setValue(this.plugin.settings.vocabularyAutoSave).onChange(async (value) => { this.plugin.settings.vocabularyAutoSave = value; await this.plugin.saveSettings(); }));
-    textSetting(containerEl, "单词本 API 地址", "完整 URL", this.plugin.settings.vocabularyUrl, async (value) => { this.plugin.settings.vocabularyUrl = value; await this.plugin.saveSettings(); });
-    new Setting(containerEl).setName("请求方法").addDropdown((dropdown) => dropdown.addOptions({ POST: "POST", GET: "GET" }).setValue(this.plugin.settings.vocabularyMethod).onChange(async (value) => { this.plugin.settings.vocabularyMethod = value === "GET" ? "GET" : "POST"; await this.plugin.saveSettings(); }));
-    textSetting(containerEl, "请求参数（JSON）", "支持 headword、phoneticUs、phoneticUk、definitionZh、definitionEn", this.plugin.settings.vocabularyRequestTemplate, async (value) => { this.plugin.settings.vocabularyRequestTemplate = value; await this.plugin.saveSettings(); }, false, true);
-    new Setting(containerEl).setName("认证方式").addDropdown((dropdown) => dropdown.addOptions({ none: "无", bearer: "Bearer Token", basic: "Basic" }).setValue(this.plugin.settings.vocabularyAuthType).onChange(async (value) => { this.plugin.settings.vocabularyAuthType = value === "basic" || value === "bearer" ? value : "none"; await this.plugin.saveSettings(); }));
-    textSetting(containerEl, "认证凭据", "有认证时填写；无认证时留空", this.plugin.settings.vocabularyAuthCredential, async (value) => { this.plugin.settings.vocabularyAuthCredential = value; await this.plugin.saveSettings(); }, true);
-    textSetting(containerEl, "自定义请求头（JSON）", "可填写自定义认证或特殊请求头", this.plugin.settings.vocabularyCustomHeaders, async (value) => { this.plugin.settings.vocabularyCustomHeaders = value; await this.plugin.saveSettings(); }, false, true);
-  }
 }
-
-function textSetting(container: HTMLElement, name: string, desc: string, value: string, onChange: (value: string) => Promise<void>, password = false, textarea = false) { return new Setting(container).setName(name).setDesc(desc).addText((text) => { text.setValue(value).setPlaceholder(value).onChange(onChange); text.inputEl.type = password ? "password" : "text"; if (textarea) text.inputEl.addClass("ai-translate-setting-textarea"); }); }
 
 function addPasswordText(setting: Setting, value: string, onChange: (value: string) => Promise<void>) {
   setting.addText((text) => {
@@ -307,7 +286,7 @@ function addPronunciation(parent: HTMLElement, label: string, phonetic: string, 
     play.setAttr("aria-label", `播放${label}式发音`);
     play.setAttr("title", `播放${label}式发音`);
     setIcon(play, "volume-2");
-    play.addEventListener("click", () => new Audio(audioUrl).play().catch(() => new Notice("发音播放失败")));
+    play.addEventListener("click", () => { void new Audio(audioUrl).play().catch(() => new Notice("发音播放失败")); });
   }
 }
 function appendList(parent: HTMLElement, title: string, values: string[], language: "zh" | "en") {

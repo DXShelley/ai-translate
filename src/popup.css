@@ -144,7 +144,7 @@ button {
 
 .phonetic {
   color: #52677c;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: monospace;
   font-size: 12px;
   overflow-wrap: anywhere;
 }

@@ -19,7 +19,7 @@ AI Translate fits into your Obsidian reading and writing flow. Select text to lo
 
 ## Requirements
 
-- Obsidian `1.12.4` or newer.
+- Obsidian `1.13.0` or newer.
 - An OpenAI-compatible endpoint only when the built-in Youdao service is unavailable or disabled.
 
 ## Install
@@ -66,11 +66,7 @@ When external vocabulary integration is enabled, these additional settings becom
 | Authentication credential | Credential used by the selected authentication method. |
 | Custom headers | Additional request headers as a JSON object. |
 
-On Obsidian `1.13.0` and later, all settings are registered with declarative definitions and are available through Settings search. The vocabulary credential uses a custom password renderer and remains masked in both the modern and legacy settings interfaces.
-
-## Upgrading
-
-The legacy fallback API Key setting has been removed. When the plugin loads, any previously stored `apiKey` value is discarded and is not written back to the vault configuration.
+All settings are registered with declarative definitions and are available through Settings search. The vocabulary credential uses a custom password renderer and remains masked.
 
 ## External vocabulary API
 
@@ -98,7 +94,7 @@ AI Translate does not collect or transmit data to an operator-controlled service
 
 ## Build from source
 
-The full repository build also requires Python 3 for browser release archives. The Obsidian-only build below requires Node.js only.
+The full repository build and the Obsidian-only build require Node.js only.
 
 ```sh
 cd obsidian-plugin

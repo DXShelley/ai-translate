@@ -399,10 +399,3 @@
 #lit-translator-root .lit-error {
   color: #b3261e;
 }
-
-@media (max-width: 520px) {
-  #lit-translator-root .lit-popover {
-    left: 12px !important;
-    width: calc(100vw - 24px) !important;
-  }
-}
