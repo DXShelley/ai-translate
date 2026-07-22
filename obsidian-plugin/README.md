@@ -38,7 +38,19 @@ After the plugin is approved in the Obsidian Community directory, open **Setting
 | API Key | Optional bearer token for the fallback API. |
 | Target language | Translation target for non-Chinese text. |
 
-On Obsidian `1.13.0` and later, all settings are registered with the declarative settings API and are available through Settings search.
+When external vocabulary integration is enabled, these additional settings become available:
+
+| Setting | Description |
+| --- | --- |
+| Automatically save lookups | Saves successful English dictionary lookups without opening the result modal again. |
+| Vocabulary API URL | Full URL for the external vocabulary service. |
+| Request method | `POST` sends JSON; `GET` sends the top-level template fields as query parameters. |
+| Request template | JSON body or query template for the vocabulary request. |
+| Authentication | Bearer, Basic, or no authentication. |
+| Authentication credential | Credential used by the selected authentication method. |
+| Custom headers | Additional request headers as a JSON object. |
+
+On Obsidian `1.13.0` and later, all settings are registered with the declarative settings API and are available through Settings search. API keys and vocabulary credentials remain password inputs in both the modern and legacy settings interfaces.
 
 ## External vocabulary API
 

@@ -235,7 +235,7 @@ class AITranslateSettingTab extends PluginSettingTab {
           { name: "API Base URL", desc: "OpenAI 兼容 API，例如 http://localhost:1234/v1", control: { type: "text", key: "baseUrl" } },
           { name: "Endpoint Path", desc: "通常为 /chat/completions", control: { type: "text", key: "endpointPath" } },
           { name: "Model", desc: "内置服务不可用时使用的模型", control: { type: "text", key: "model" } },
-          { name: "API Key", desc: "可选", control: { type: "text", key: "apiKey" } },
+          { name: "API Key", desc: "可选", render: (setting) => addPasswordText(setting, this.plugin.settings.apiKey, async (value) => { this.plugin.settings.apiKey = value; await this.plugin.saveSettings(); }) },
           { name: "目标语言", desc: "非中文文本的翻译目标", control: { type: "text", key: "targetLanguage" } }
         ]
       },
@@ -249,7 +249,7 @@ class AITranslateSettingTab extends PluginSettingTab {
           { name: "请求方法", visible: vocabularyFieldsVisible, control: { type: "dropdown", key: "vocabularyMethod", options: { POST: "POST", GET: "GET" } } },
           { name: "请求参数（JSON）", desc: "支持 headword、phoneticUs、phoneticUk、definitionZh、definitionEn", visible: vocabularyFieldsVisible, control: { type: "textarea", key: "vocabularyRequestTemplate", rows: 4 } },
           { name: "认证方式", visible: vocabularyFieldsVisible, control: { type: "dropdown", key: "vocabularyAuthType", options: { none: "无", bearer: "Bearer Token", basic: "Basic" } } },
-          { name: "认证凭据", desc: "有认证时填写；无认证时留空", visible: vocabularyFieldsVisible, control: { type: "text", key: "vocabularyAuthCredential" } },
+          { name: "认证凭据", desc: "有认证时填写；无认证时留空", visible: vocabularyFieldsVisible, render: (setting) => addPasswordText(setting, this.plugin.settings.vocabularyAuthCredential, async (value) => { this.plugin.settings.vocabularyAuthCredential = value; await this.plugin.saveSettings(); }) },
           { name: "自定义请求头（JSON）", desc: "可填写自定义认证或特殊请求头", visible: vocabularyFieldsVisible, control: { type: "textarea", key: "vocabularyCustomHeaders", rows: 4 } }
         ]
       }
@@ -292,6 +292,14 @@ class AITranslateSettingTab extends PluginSettingTab {
 }
 
 function textSetting(container: HTMLElement, name: string, desc: string, value: string, onChange: (value: string) => Promise<void>, password = false, textarea = false) { return new Setting(container).setName(name).setDesc(desc).addText((text) => { text.setValue(value).setPlaceholder(value).onChange(onChange); text.inputEl.type = password ? "password" : "text"; if (textarea) text.inputEl.addClass("ai-translate-setting-textarea"); }); }
+
+function addPasswordText(setting: Setting, value: string, onChange: (value: string) => Promise<void>) {
+  setting.addText((text) => {
+    text.setValue(value).setPlaceholder(value ? "Stored locally" : "Optional").onChange(onChange);
+    text.inputEl.type = "password";
+  });
+}
+
 function addPronunciation(parent: HTMLElement, label: string, phonetic: string, audioUrl: string) {
   if (!phonetic && !audioUrl) return;
   const item = parent.createDiv({ cls: "ai-translate-pronunciation-item" });
