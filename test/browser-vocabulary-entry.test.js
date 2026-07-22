@@ -7,9 +7,10 @@ const vm = require("node:vm");
 test("browser background entry sends one idempotent request for concurrent saves", async () => {
   let requests = 0;
   let requestHeaders;
+  let requestBody;
   const settings = {
     vocabularyEnabled: true, vocabularyAutoSave: true, vocabularyMethod: "POST",
-    vocabularyUrl: "https://word-book.test/words", vocabularyRequestTemplate: '{"headword":"{{headword}}"}',
+    vocabularyUrl: "https://word-book.test/words", vocabularyRequestTemplate: '{"headword":"{{headword}}","phoneticUs":"{{phoneticUs}}","phoneticUk":"{{phoneticUk}}","definitionZh":"{{definitionZh}}","definitionEn":"{{definitionEn}}"}',
     vocabularyAuthCredential: "token", vocabularyAuthType: "bearer", vocabularyCustomHeaders: "{}", requestLogging: false,
   };
   const listener = () => {};
@@ -27,7 +28,7 @@ test("browser background entry sends one idempotent request for concurrent saves
     AbortController, URLSearchParams, chrome, console, crypto, setTimeout, clearTimeout,
     btoa: (value) => Buffer.from(value, "binary").toString("base64"),
     fetch: async (_url, init) => {
-      requests += 1; requestHeaders = init.headers;
+      requests += 1; requestHeaders = init.headers; requestBody = init.body;
       await new Promise((resolve) => setImmediate(resolve));
       return { ok: true, status: 201, statusText: "Created", text: async () => "{}" };
     },
@@ -43,4 +44,5 @@ test("browser background entry sends one idempotent request for concurrent saves
   assert.equal(requests, 1);
   assert.equal(requestHeaders.Authorization, "Bearer token");
   assert.match(requestHeaders["Idempotency-Key"], /^ai-translate-/);
+  assert.deepEqual(JSON.parse(requestBody), { headword: "hello", definitionZh: "你好" });
 });

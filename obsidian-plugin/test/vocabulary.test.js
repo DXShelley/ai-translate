@@ -27,13 +27,14 @@ test("merges concurrent Obsidian saves for the same normalized word", async () =
 test("Obsidian plugin entry sends one idempotent request for concurrent saves", async () => {
   let calls = 0;
   let headers;
+  let body;
   const originalLoad = Module._load;
   Module._load = function (request, parent, isMain) {
     if (request !== "obsidian") return originalLoad.call(this, request, parent, isMain);
     return {
       Plugin: class {}, PluginSettingTab: class {}, Modal: class {}, Notice: class {}, Setting: class {}, setIcon: () => {},
       requestUrl: async (request) => {
-        calls += 1; headers = request.headers;
+        calls += 1; headers = request.headers; body = request.body;
         await new Promise((resolve) => setImmediate(resolve));
         return { status: 201, text: "{}" };
       },
@@ -46,7 +47,7 @@ test("Obsidian plugin entry sends one idempotent request for concurrent saves", 
     plugin.settings = {
       vocabularyEnabled: true, vocabularyAutoSave: true, vocabularyUrl: "https://word-book.test/words", vocabularyMethod: "POST",
       vocabularyCustomHeaders: "{}", vocabularyAuthType: "bearer", vocabularyAuthCredential: "token",
-      vocabularyRequestTemplate: '{"headword":"{{headword}}"}',
+      vocabularyRequestTemplate: '{"headword":"{{headword}}","phoneticUs":"{{phoneticUs}}","phoneticUk":"{{phoneticUk}}","definitionZh":"{{definitionZh}}","definitionEn":"{{definitionEn}}"}',
     };
     await Promise.all([
       plugin.saveVocabulary("note", { definitionsZh: ["笔记"], definitionsEn: [], phoneticUS: "", phoneticUK: "", speechUrls: { us: "", uk: "" } }),
@@ -55,6 +56,7 @@ test("Obsidian plugin entry sends one idempotent request for concurrent saves", 
     assert.equal(calls, 1);
     assert.equal(headers.Authorization, "Bearer token");
     assert.match(headers["Idempotency-Key"], /^ai-translate-/);
+    assert.deepEqual(JSON.parse(body), { headword: "note", definitionZh: "笔记" });
   } finally {
     Module._load = originalLoad;
   }
