@@ -868,8 +868,7 @@ body.popup .open-options {
     grid-template-columns: 1fr;
   }
 
-  .profile-content,
-  .profile-content:has(.request-log-detail-panel:not([hidden])) {
+  .profile-content {
     display: grid;
     grid-template-columns: 1fr;
   }

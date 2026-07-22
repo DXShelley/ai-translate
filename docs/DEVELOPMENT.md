@@ -496,13 +496,24 @@ git checkout dev
 
 ```text
 .gitignore
+LICENSE
 README.md
+README.zh-CN.md
 manifest.json
+ob-translate.png
 package.json
 package-lock.json
 docs/
+obsidian-plugin/
+packages/
 scripts/
+shared/
 src/
+test/
+test-edge-check/
+test-ff1/
+test-ff2/
+test-firefox2/
 vscode-extension/
 website/
 .github/
@@ -524,7 +535,7 @@ build/
 *.bak
 ```
 
-其中 `src/vendor/` 是浏览器扩展运行依赖目录，属于必要文件，必须保留。`vscode-extension/` 是 VS Code 插件源码和打包配置，也属于必要文件；`dist/` 中的 VSIX 仍为本地构建产物，不进入 `main`。
+其中 `src/vendor/` 是浏览器扩展运行依赖目录，属于必要文件，必须保留。`packages/` 提供各浏览器清单与生成包目录，`shared/` 提供跨插件单词本协议实现，`test*` 目录保留浏览器测试与兼容性夹具，`obsidian-plugin/` 和 `vscode-extension/` 分别包含两类插件的源码、测试与打包配置，也都属于必要文件；`dist/` 中的本地发布产物不进入 `main`。
 
 ### dev 到 main 的同步流程
 
@@ -545,7 +556,7 @@ powershell -ExecutionPolicy Bypass -File scripts\sync-dev-to-main.ps1 -Push
 1. 要求当前分支必须是 `dev`。
 2. 要求工作区必须干净。
 3. 切换到 `main`。
-4. 只从 `dev` 同步必要文件范围，包括浏览器 zip、VS Code 插件源码、支持页与 Pages 工作流。
+4. 只从 `dev` 同步必要文件范围，包括浏览器 zip 与源码、共享模块、VS Code 和 Obsidian 插件、项目文档、支持页与 Pages 工作流。
 5. 如有变更，自动提交到 `main`。
 6. 返回 `dev`。
 7. 使用 `-Push` 时推送 `dev` 和 `main`。

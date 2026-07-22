@@ -1,4 +1,6 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 const Module = require("node:module");
 
@@ -45,4 +47,31 @@ test("fallback translation never sends a removed API key", async () => {
   assert.equal(await plugin.translate("hello"), "translated");
   assert.deepEqual(request.headers, { "Content-Type": "application/json" });
   assert.equal("Authorization" in request.headers, false);
+});
+
+test("keeps root and plugin manifests compatible with declarative settings", () => {
+  const pluginRoot = path.join(__dirname, "..");
+  const manifests = [
+    path.join(pluginRoot, "manifest.json"),
+    path.join(pluginRoot, "..", "manifest.json"),
+  ].map((manifestPath) => JSON.parse(fs.readFileSync(manifestPath, "utf8")));
+  const source = fs.readFileSync(path.join(pluginRoot, "src", "main.ts"), "utf8");
+
+  assert.ok(manifests.every((manifest) => manifest.minAppVersion === "1.13.0"));
+  assert.equal(manifests[0].version, manifests[1].version);
+});
+
+test("uses only declarative settings definitions", () => {
+  const pluginRoot = path.join(__dirname, "..");
+  const source = fs.readFileSync(path.join(pluginRoot, "src", "main.ts"), "utf8");
+
+  assert.match(source, /getSettingDefinitions\(\): SettingDefinitionItem\[\]/);
+  assert.doesNotMatch(source, /^\s*display\(\)/m);
+});
+
+test("does not return the pronunciation playback promise from its event handler", () => {
+  const pluginRoot = path.join(__dirname, "..");
+  const source = fs.readFileSync(path.join(pluginRoot, "src", "main.ts"), "utf8");
+
+  assert.match(source, /void new Audio\(audioUrl\)\.play\(\)/);
 });

@@ -19,7 +19,7 @@ AI Translate 是贴合 Obsidian 阅读与写作流程的查词翻译插件。选
 
 ## 要求
 
-- Obsidian `1.12.4` 或更高版本。
+- Obsidian `1.13.0` 或更高版本。
 - 仅当内置有道服务不可用或被关闭时，才需要可用的 OpenAI-compatible API。
 
 ## 安装
@@ -71,7 +71,7 @@ AI Translate 是贴合 Obsidian 阅读与写作流程的查词翻译插件。选
 | 认证凭据 | 所选认证方式使用的凭据。该字段以密码形式显示。 |
 | 自定义请求头（JSON） | 额外的 HTTP 请求头，例如自定义 API Key。 |
 
-在 Obsidian `1.13.0` 及以上版本，所有设置均以声明式定义注册，支持通过 Settings 搜索。认证凭据会在新旧设置界面中保持掩码显示。
+所有设置均以声明式定义注册，支持通过 Settings 搜索。认证凭据会保持掩码显示。
 
 ### 请求模板与字段映射
 
@@ -117,13 +117,9 @@ AI Translate 是贴合 Obsidian 阅读与写作流程的查词翻译插件。选
 
 AI Translate 不会向运营方控制的服务收集或传输数据。词典与翻译请求只会发送至有道，或发送至你自行配置的 OpenAI-compatible API。外部单词本请求只会在你启用并配置该功能后发出。
 
-## 升级说明
-
-旧版的备用 API Key 设置已移除。插件加载时会丢弃已保存的 `apiKey` 值，且不会再将其写回 vault 配置。
-
 ## 从源码构建
 
-完整仓库构建浏览器发布包还需要 Python 3；仅构建 Obsidian 插件只需要 Node.js。
+完整仓库构建浏览器发布包和仅构建 Obsidian 插件均只需要 Node.js。
 
 ```sh
 cd obsidian-plugin
