@@ -510,6 +510,10 @@ scripts/
 shared/
 src/
 test/
+test-edge-check/
+test-ff1/
+test-ff2/
+test-firefox2/
 vscode-extension/
 website/
 .github/
@@ -531,7 +535,7 @@ build/
 *.bak
 ```
 
-其中 `src/vendor/` 是浏览器扩展运行依赖目录，属于必要文件，必须保留。`packages/` 提供各浏览器清单与生成包目录，`shared/` 提供跨插件单词本协议实现，`obsidian-plugin/` 和 `vscode-extension/` 分别包含两类插件的源码、测试与打包配置，也都属于必要文件；`dist/` 中的本地发布产物不进入 `main`。
+其中 `src/vendor/` 是浏览器扩展运行依赖目录，属于必要文件，必须保留。`packages/` 提供各浏览器清单与生成包目录，`shared/` 提供跨插件单词本协议实现，`test*` 目录保留浏览器测试与兼容性夹具，`obsidian-plugin/` 和 `vscode-extension/` 分别包含两类插件的源码、测试与打包配置，也都属于必要文件；`dist/` 中的本地发布产物不进入 `main`。
 
 ### dev 到 main 的同步流程
 
