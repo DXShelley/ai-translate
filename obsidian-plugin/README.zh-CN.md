@@ -19,7 +19,7 @@ AI Translate 是贴合 Obsidian 阅读与写作流程的查词翻译插件。选
 
 ## 要求
 
-- Obsidian `1.13.0` 或更高版本。
+- Obsidian `1.12.2` 或更高版本。
 - 仅当内置有道服务不可用或被关闭时，才需要可用的 OpenAI-compatible API。
 
 ## 安装
@@ -69,9 +69,9 @@ AI Translate 是贴合 Obsidian 阅读与写作流程的查词翻译插件。选
 | 请求参数（JSON） | 定义发送给单词本服务的字段及占位符。 |
 | 认证方式 | 可选 `Bearer Token`、`Basic` 或无认证。 |
 | 认证凭据 | 所选认证方式使用的凭据。该字段以密码形式显示。 |
-| 自定义请求头（JSON） | 额外的 HTTP 请求头，例如自定义 API Key。 |
+| 自定义请求头（JSON） | 额外的 HTTP 请求头，例如服务要求的自定义认证头。 |
 
-所有设置均以声明式定义注册，支持通过 Settings 搜索。认证凭据会保持掩码显示。
+所有受支持的 Obsidian 版本共用一套设置实现。启用外部单词本后，设置页会刷新并显示相关字段。认证凭据使用密码输入框并保持掩码显示；翻译设置中没有单独的 API Key 字段。
 
 ### 请求模板与字段映射
 
@@ -129,6 +129,8 @@ npm run check
 
 `npm run check` 会构建 `main.js`、进行 TypeScript 校验并执行插件测试。
 
+插件使用 Obsidian `1.12.2` API 类型包编译，并在 manifest 中声明最低应用版本为 Obsidian `1.12.2`。设置页使用传统 `PluginSettingTab.display()` API，从而让 `1.12.2` 与更新版本共用同一套字段定义，避免两套设置长期漂移。
+
 在仓库根目录单独构建 Obsidian 发布包：
 
 ```sh
@@ -136,6 +138,8 @@ npm run release:obsidian
 ```
 
 构建产物将写入 `dist/release/obsidian/<version>/`。
+
+Release tag 必须与 `manifest.json` 中的版本完全一致，且不能带 `v` 前缀。
 
 ## 项目支持
 

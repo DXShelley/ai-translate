@@ -1,4 +1,4 @@
-import { App, Editor, Modal, Notice, Plugin, PluginSettingTab, Setting, requestUrl, setIcon, type SettingDefinitionItem } from "obsidian";
+import { App, Editor, Modal, Notice, Plugin, PluginSettingTab, Setting, requestUrl, setIcon } from "obsidian";
 import vocabularyModule from "../../shared/vocabulary.js";
 
 type VocabularyApi = {
@@ -220,59 +220,39 @@ class ResultModal extends Modal {
   }
 }
 
-class AITranslateSettingTab extends PluginSettingTab {
+export class AITranslateSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: AITranslatePlugin) { super(app, plugin); }
 
-  getSettingDefinitions(): SettingDefinitionItem[] {
-    const vocabularyFieldsVisible = () => this.plugin.settings.vocabularyEnabled;
-    return [
-      {
-        type: "group",
-        heading: "Translation",
-        items: [
-          { name: "内置有道服务", desc: "优先使用有道移动词典和翻译；不可用时使用 OpenAI 兼容接口。", control: { type: "toggle", key: "builtinApiEnabled" } },
-          { name: "API Base URL", desc: "OpenAI 兼容 API，例如 http://localhost:1234/v1", control: { type: "text", key: "baseUrl" } },
-          { name: "Endpoint Path", desc: "通常为 /chat/completions", control: { type: "text", key: "endpointPath" } },
-          { name: "Model", desc: "内置服务不可用时使用的模型", control: { type: "text", key: "model" } },
-          { name: "目标语言", desc: "非中文文本的翻译目标", control: { type: "text", key: "targetLanguage" } }
-        ]
-      },
-      {
-        type: "group",
-        heading: "外部单词本",
-        items: [
-          { name: "启用单词本适配", desc: "仅提交英文单词查询结果；请求失败不影响查词。", control: { type: "toggle", key: "vocabularyEnabled" } },
-          { name: "查询后自动收藏", desc: "关闭后，在查词结果中手动收藏。", visible: vocabularyFieldsVisible, control: { type: "toggle", key: "vocabularyAutoSave" } },
-          { name: "单词本 API 地址", desc: "完整 URL", visible: vocabularyFieldsVisible, control: { type: "text", key: "vocabularyUrl" } },
-          { name: "请求方法", visible: vocabularyFieldsVisible, control: { type: "dropdown", key: "vocabularyMethod", options: { POST: "POST", GET: "GET" } } },
-          { name: "请求参数（JSON）", desc: "支持 headword、phoneticUs、phoneticUk、definitionZh、definitionEn", visible: vocabularyFieldsVisible, control: { type: "textarea", key: "vocabularyRequestTemplate", rows: 4 } },
-          { name: "认证方式", visible: vocabularyFieldsVisible, control: { type: "dropdown", key: "vocabularyAuthType", options: { none: "无", bearer: "Bearer Token", basic: "Basic" } } },
-          { name: "认证凭据", desc: "有认证时填写；无认证时留空", visible: vocabularyFieldsVisible, render: (setting) => addPasswordText(setting, this.plugin.settings.vocabularyAuthCredential, async (value) => { this.plugin.settings.vocabularyAuthCredential = value; await this.plugin.saveSettings(); }) },
-          { name: "自定义请求头（JSON）", desc: "可填写自定义认证或特殊请求头", visible: vocabularyFieldsVisible, control: { type: "textarea", key: "vocabularyCustomHeaders", rows: 4 } }
-        ]
-      }
-    ];
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    new Setting(containerEl).setName("Translation").setHeading();
+    new Setting(containerEl).setName("内置有道服务").setDesc("优先使用有道移动词典和翻译；不可用时使用 OpenAI 兼容接口。").addToggle((toggle) => toggle.setValue(this.plugin.settings.builtinApiEnabled).onChange(async (value) => { this.plugin.settings.builtinApiEnabled = value; await this.plugin.saveSettings(); }));
+    textSetting(containerEl, "API Base URL", "OpenAI 兼容 API，例如 http://localhost:1234/v1", this.plugin.settings.baseUrl, async (value) => { this.plugin.settings.baseUrl = value; await this.plugin.saveSettings(); });
+    textSetting(containerEl, "Endpoint Path", "通常为 /chat/completions", this.plugin.settings.endpointPath, async (value) => { this.plugin.settings.endpointPath = value; await this.plugin.saveSettings(); });
+    textSetting(containerEl, "Model", "内置服务不可用时使用的模型", this.plugin.settings.model, async (value) => { this.plugin.settings.model = value; await this.plugin.saveSettings(); });
+    textSetting(containerEl, "目标语言", "非中文文本的翻译目标", this.plugin.settings.targetLanguage, async (value) => { this.plugin.settings.targetLanguage = value; await this.plugin.saveSettings(); });
+    new Setting(containerEl).setName("外部单词本").setHeading();
+    new Setting(containerEl).setName("启用单词本适配").setDesc("仅提交英文单词查询结果；请求失败不影响查词。").addToggle((toggle) => toggle.setValue(this.plugin.settings.vocabularyEnabled).onChange(async (value) => { this.plugin.settings.vocabularyEnabled = value; await this.plugin.saveSettings(); this.display(); }));
+    if (!this.plugin.settings.vocabularyEnabled) return;
+    new Setting(containerEl).setName("查询后自动收藏").setDesc("关闭后，在查词结果中手动收藏。").addToggle((toggle) => toggle.setValue(this.plugin.settings.vocabularyAutoSave).onChange(async (value) => { this.plugin.settings.vocabularyAutoSave = value; await this.plugin.saveSettings(); }));
+    textSetting(containerEl, "单词本 API 地址", "完整 URL", this.plugin.settings.vocabularyUrl, async (value) => { this.plugin.settings.vocabularyUrl = value; await this.plugin.saveSettings(); });
+    new Setting(containerEl).setName("请求方法").addDropdown((dropdown) => dropdown.addOptions({ POST: "POST", GET: "GET" }).setValue(this.plugin.settings.vocabularyMethod).onChange(async (value) => { this.plugin.settings.vocabularyMethod = value === "GET" ? "GET" : "POST"; await this.plugin.saveSettings(); }));
+    textSetting(containerEl, "请求参数（JSON）", "支持 headword、phoneticUs、phoneticUk、definitionZh、definitionEn", this.plugin.settings.vocabularyRequestTemplate, async (value) => { this.plugin.settings.vocabularyRequestTemplate = value; await this.plugin.saveSettings(); }, "textarea");
+    new Setting(containerEl).setName("认证方式").addDropdown((dropdown) => dropdown.addOptions({ none: "无", bearer: "Bearer Token", basic: "Basic" }).setValue(this.plugin.settings.vocabularyAuthType).onChange(async (value) => { this.plugin.settings.vocabularyAuthType = value === "basic" || value === "bearer" ? value : "none"; await this.plugin.saveSettings(); }));
+    textSetting(containerEl, "认证凭据", "有认证时填写；无认证时留空", this.plugin.settings.vocabularyAuthCredential, async (value) => { this.plugin.settings.vocabularyAuthCredential = value; await this.plugin.saveSettings(); }, "password");
+    textSetting(containerEl, "自定义请求头（JSON）", "可填写自定义认证或特殊请求头", this.plugin.settings.vocabularyCustomHeaders, async (value) => { this.plugin.settings.vocabularyCustomHeaders = value; await this.plugin.saveSettings(); }, "textarea");
   }
-
-  getControlValue(key: string): unknown {
-    return this.plugin.settings[key as keyof AITranslateSettings];
-  }
-
-  async setControlValue(key: string, value: unknown): Promise<void> {
-    if (!isSettingsKey(key)) return;
-    const currentValue = this.plugin.settings[key];
-    if (typeof value !== typeof currentValue) return;
-    this.plugin.settings[key] = value as never;
-    await this.plugin.saveSettings();
-    if (key === "vocabularyEnabled") this.update();
-  }
-
 }
 
-function addPasswordText(setting: Setting, value: string, onChange: (value: string) => Promise<void>) {
-  setting.addText((text) => {
-    text.setValue(value).setPlaceholder(value ? "Stored locally" : "Optional").onChange(onChange);
-    text.inputEl.type = "password";
+function textSetting(container: HTMLElement, name: string, desc: string, value: string, onChange: (value: string) => Promise<void>, type: "text" | "password" | "textarea" = "text") {
+  const setting = new Setting(container).setName(name).setDesc(desc);
+  if (type === "textarea") {
+    return setting.addTextArea((text) => text.setValue(value).onChange(onChange));
+  }
+  return setting.addText((text) => {
+    text.setValue(value).setPlaceholder(type === "password" ? (value ? "Stored locally" : "Optional") : value).onChange(onChange);
+    text.inputEl.type = type;
   });
 }
 
@@ -319,10 +299,6 @@ export function migrateSettings(raw: unknown): AITranslateSettings {
   const stored = raw as Partial<AITranslateSettings & { apiKey?: unknown }>;
   const { apiKey: _deprecatedApiKey, ...settings } = stored;
   return { ...DEFAULT_SETTINGS, ...settings };
-}
-
-function isSettingsKey(key: string): key is keyof AITranslateSettings {
-  return key in DEFAULT_SETTINGS;
 }
 
 async function requestYoudaoTranslation(text: string): Promise<string> {

@@ -42,7 +42,7 @@ All plugins use major version `7`. Obsidian patch versions may advance independe
 - Run **AI Translate: Look up selected text** from the editor menu or Command Palette.
 - Show phonetics, Chinese and English definitions, and available pronunciation audio for English words.
 - Use built-in Youdao mobile services first and an OpenAI-compatible endpoint as fallback.
-- Register searchable declarative settings on Obsidian `1.13.0` and later.
+- Support Obsidian `1.12.2` and later through one settings implementation shared by all supported app versions.
 - Send vocabulary requests independently so a vocabulary API failure does not break lookup or translation.
 
 See [AI Translate - Obsidian Plugin](obsidian-plugin/README.md) for the complete Obsidian installation, settings, privacy, and request-template reference.
@@ -74,7 +74,7 @@ For manual installation, download `main.js`, `manifest.json`, and `styles.css` f
 <vault>/.obsidian/plugins/ai-translate/
 ```
 
-Obsidian release tags do not use a `v` prefix. For example, manifest version `7.0.7` must use release tag `7.0.7`, not `v7.0.7`.
+Obsidian release tags do not use a `v` prefix. For example, manifest version `7.0.8` must use release tag `7.0.8`, not `v7.0.8`.
 
 ## Configuration
 
@@ -175,7 +175,7 @@ dist/release/obsidian/<version>/manifest.json
 dist/release/obsidian/<version>/styles.css
 ```
 
-Pushing a numeric tag such as `7.0.7` triggers `.github/workflows/release-obsidian.yml`, which checks the plugin, creates artifact attestations, and publishes the GitHub Release.
+Pushing a numeric tag such as `7.0.8` triggers `.github/workflows/release-obsidian.yml`, which checks the plugin, creates artifact attestations, and publishes the GitHub Release.
 
 ## Repository Layout
 
