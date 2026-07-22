@@ -1,32 +1,10 @@
 {
-  "manifest_version": 3,
+  "id": "ai-translate",
   "name": "AI Translate",
-  "description": "Selection, sentence, and paragraph translation with an OpenAI-compatible local model.",
-  "version": "7.0.1",
-  "permissions": ["storage", "contextMenus", "activeTab", "commands", "tts"],
-  "host_permissions": ["<all_urls>"],
-  "background": {
-    "service_worker": "src/background.js"
-  },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["src/browser-adapter.js", "src/content.js"],
-      "css": ["src/content.css"],
-      "run_at": "document_idle"
-    }
-  ],
-  "options_page": "src/options.html",
-  "action": {
-    "default_title": "AI Translate",
-    "default_popup": "src/popup.html"
-  },
-  "commands": {
-    "translate-selection": {
-      "suggested_key": {
-        "default": "Alt+T"
-      },
-      "description": "Translate current selection"
-    }
-  }
+  "version": "7.0.2",
+  "minAppVersion": "1.12.4",
+  "description": "单独查词、选中查词、翻译与外部单词本适配。",
+  "author": "DxShelley",
+  "authorUrl": "https://github.com/DXShelley/ai-translate",
+  "isDesktopOnly": false
 }
