@@ -213,7 +213,27 @@ async function verifyVocabularySave() {
   }
 }
 
+async function verifyVocabularySaveWithoutPhonetics() {
+  const server = http.createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      assert.deepEqual(JSON.parse(body), { headword: "missing-ipa", definitionZh: "无音标" });
+      response.writeHead(201); response.end();
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    await extension.saveVocabulary("missing-ipa", { definitionsZh: ["无音标"], definitionsEn: [], phoneticUS: "", phoneticUK: "" }, {
+      vocabularyEnabled: true, vocabularyUrl: `http://127.0.0.1:${server.address().port}/vocabulary`, vocabularyMethod: "POST",
+      vocabularyAuthType: "none", vocabularyAuthCredential: "", vocabularyCustomHeaders: "{}", timeoutMs: 1000,
+    });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+}
+
 verifyCacheEviction();
-Promise.all([verifyOpenAiCompatibleRequest(), verifyRequestTimeout(), verifyRequestCancellation(), verifyVocabularySave()]).catch((error) => {
+Promise.all([verifyOpenAiCompatibleRequest(), verifyRequestTimeout(), verifyRequestCancellation(), verifyVocabularySave(), verifyVocabularySaveWithoutPhonetics()]).catch((error) => {
   process.nextTick(() => { throw error; });
 });

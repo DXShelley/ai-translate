@@ -23,6 +23,11 @@ test("serializes nested GET template values consistently", () => {
   ]);
 });
 
+test("omits empty optional fields from a template", () => {
+  const request = vocabulary.buildRequest('{"headword":"{{headword}}","phoneticUs":"{{phoneticUs}}","definitionZh":"{{definitionZh}}"}', vocabulary.buildPayload("hello", {}));
+  assert.deepEqual(request, { headword: "hello" });
+});
+
 test("merges concurrent saves for the same word", async () => {
   const coordinator = vocabulary.createSaveCoordinator();
   let calls = 0;

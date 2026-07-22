@@ -29,7 +29,7 @@ npm run build
 python -c "import zipfile,json; files=['AI-Translate-chrome.zip','AI-Translate-edge.zip','AI-Translate-firefox.zip']; [print(f, json.loads(zipfile.ZipFile(f).read('manifest.json'))['version'], 'importScripts' in zipfile.ZipFile(f).read('background.js').decode('utf-8')) for f in files]"
 ```
 
-期望输出中版本为 `7.0.0`，且 `importScripts` 为 `False`。
+期望输出中版本为 `7.0.1`，且 `importScripts` 为 `False`。
 
 ## VS Code 扩展构建
 
@@ -42,7 +42,7 @@ npm run package
 Pop-Location
 ```
 
-期望生成：`dist/ai-translate-hover-7.0.0.vsix`。发布前使用 VS Code 的 `Install from VSIX...` 验证安装，并检查选词悬停、用户自定义快捷键、词典发音、模型回退，以及单词本自动收藏和手动“收藏”按钮。确认单词本设置显示在 `AI Translate Hover: Vocabulary` 设置组。
+期望生成：`dist/ai-translate-hover-7.0.1.vsix`。发布前使用 VS Code 的 `Install from VSIX...` 验证安装，并检查选词悬停、用户自定义快捷键、词典发音、模型回退，以及单词本自动收藏和手动“收藏”按钮。确认单词本设置显示在 `AI Translate Hover: Vocabulary` 设置组。
 
 ## 项目功能说明页与 Pages 部署
 

@@ -37,9 +37,14 @@
   }
 
   function replaceVariables(value, variables) {
-    if (Array.isArray(value)) return value.map((item) => replaceVariables(item, variables));
-    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceVariables(item, variables)]));
-    return typeof value === "string" ? value.replace(/{{\s*(headword|phoneticUs|phoneticUk|definitionZh|definitionEn|word|definition|phoneticUS|phoneticUK)\s*}}/g, (_, key) => variables[key] || "") : value;
+    if (Array.isArray(value)) return value.map((item) => replaceVariables(item, variables)).filter((item) => item !== undefined);
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value)
+      .map(([key, item]) => [key, replaceVariables(item, variables)])
+      .filter(([, item]) => item !== undefined));
+    if (typeof value !== "string") return value;
+    const pureVariable = /^{{\s*(headword|phoneticUs|phoneticUk|definitionZh|definitionEn|word|definition|phoneticUS|phoneticUK)\s*}}$/.exec(value);
+    if (pureVariable && !variables[pureVariable[1]]) return undefined;
+    return value.replace(/{{\s*(headword|phoneticUs|phoneticUk|definitionZh|definitionEn|word|definition|phoneticUS|phoneticUK)\s*}}/g, (_, key) => variables[key] || "");
   }
 
   function parseHeaders(value) {
