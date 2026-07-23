@@ -35,7 +35,7 @@ test("browser background entry sends one idempotent request for concurrent saves
     __AI_TRANSLATE_TEST__: {},
   };
   sandbox.globalThis = sandbox;
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "packages", "chrome", "background.js"), "utf8"), sandbox);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "browser-extensions", "chrome", "background.js"), "utf8"), sandbox);
   const save = sandbox.__AI_TRANSLATE_TEST__.saveVocabulary;
   await Promise.all([
     save({ word: "hello", wordInfo: { definitionsZh: ["你好"] } }),

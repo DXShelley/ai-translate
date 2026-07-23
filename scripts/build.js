@@ -2,12 +2,13 @@ const fs = require('fs');
 const path = require('path');
 const { minify: terserMinify } = require('terser');
 const CleanCSS = require('clean-css');
+const { createDirectoryZip, releaseDirectory } = require('./release-utils');
 
 // Config
 const browsers = ['chrome', 'edge', 'firefox'];
 const vendorPath = 'src/vendor';
 const srcPath = 'src';
-const outPath = 'packages';
+const outPath = 'browser-extensions';
 
 // Load files
 function readFile(file) {
@@ -88,7 +89,7 @@ async function buildBrowser(browser) {
       // MV2: bundle in order
       for (const script of bgConfig.scripts) {
         if (script === 'background.js') {
-          bgCode += `/* Shared vocabulary */\n${readFile('shared/vocabulary.js')}\n`;
+          bgCode += `/* Shared vocabulary */\n${readFile('src/vocabulary.js')}\n`;
           bgCode += `/* Source: background.js */\n${stripBackgroundLoaders(readFile(path.join(srcDir, 'background.js')))}\n`;
         } else if (script.startsWith('vendor/') || script === 'browser-adapter.js') {
           const vendorFile = script === 'browser-adapter.js' ? 'browser-adapter.js' : script;
@@ -105,7 +106,7 @@ async function buildBrowser(browser) {
         }
       }
       bgCode += `/* Browser adapter */\n${readFile(path.join(outDir, 'browser-adapter.js'))}\n`;
-      bgCode += `/* Shared vocabulary */\n${readFile('shared/vocabulary.js')}\n`;
+      bgCode += `/* Shared vocabulary */\n${readFile('src/vocabulary.js')}\n`;
       bgCode += `/* Source: background.js */\n${stripBackgroundLoaders(readFile(path.join(srcDir, 'background.js')))}\n`;
     }
 
@@ -175,39 +176,16 @@ async function buildBrowser(browser) {
   return outDir;
 }
 
-// Create zip
-async function createZip(dir, outputZip) {
-  const { ZipArchive } = await import('archiver');
-  const tempZip = `${outputZip}.tmp`;
-  const files = fs.readdirSync(dir, { recursive: true })
-    .filter((file) => typeof file === 'string' && file !== 'install.rdf')
-    .filter((file) => fs.statSync(path.join(dir, file)).isFile())
-    .sort((left, right) => (left === 'manifest.json' ? -1 : right === 'manifest.json' ? 1 : left.localeCompare(right)));
-
-  return new Promise((resolve, reject) => {
-    const output = fs.createWriteStream(tempZip);
-    const archive = new ZipArchive({ zlib: { level: 9 } });
-    output.on('close', () => {
-      fs.rmSync(outputZip, { force: true });
-      fs.renameSync(tempZip, outputZip);
-      console.log(`Created ${outputZip}: ${archive.pointer()} bytes`);
-      resolve();
-    });
-    output.on('error', reject);
-    archive.on('error', reject);
-    archive.pipe(output);
-    for (const file of files) archive.file(path.join(dir, file), { name: file });
-    void archive.finalize();
-  });
-}
-
 // Main
 async function main() {
+  const version = JSON.parse(readFile(path.join(outPath, 'chrome', 'manifest.json'))).version;
+  const releaseDir = releaseDirectory(process.cwd(), version);
+  fs.mkdirSync(releaseDir, { recursive: true });
   console.log('Building browser extensions...');
 
   for (const browser of browsers) {
     await buildBrowser(browser);
-    await createZip(path.join(outPath, browser), `AI-Translate-${browser}.zip`);
+    await createDirectoryZip(path.join(outPath, browser), path.join(releaseDir, `AI-Translate-${browser}.zip`), ['install.rdf']);
   }
 
   console.log('\n=== Build Complete ===');

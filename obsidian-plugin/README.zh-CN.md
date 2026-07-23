@@ -2,9 +2,9 @@
 
 > 在 Obsidian 中查英文单词、翻译选中文本，并可将词条保存到自己的单词本。
 
-[English](README.md) · [功能说明](#功能预览) · [安装](#安装) · [快速开始](#快速开始)
+[English](README.md) · [项目文档](../docs/README.md) · [功能说明](#功能预览) · [安装](#安装) · [快速开始](#快速开始)
 
-![AI Translate 在 Obsidian 中展示单词音标、释义、发音与收藏操作](../ob-translate.png)
+面向贡献者的产品定位和交互原则见 [产品简报](PRODUCT.md)。
 
 AI Translate 是贴合 Obsidian 阅读与写作流程的查词翻译插件。选中内容即可查询，无需离开当前笔记；内置服务优先提供词典和翻译，必要时可切换到自己的 OpenAI-compatible API。
 
@@ -131,13 +131,13 @@ npm run check
 
 插件使用 Obsidian `1.12.2` API 类型包编译，并在 manifest 中声明最低应用版本为 Obsidian `1.12.2`。设置页使用传统 `PluginSettingTab.display()` API，从而让 `1.12.2` 与更新版本共用同一套字段定义，避免两套设置长期漂移。
 
-在仓库根目录单独构建 Obsidian 发布包：
+在仓库根目录执行完整发布构建，Obsidian 不再单独发布：
 
 ```sh
-npm run release:obsidian
+npm run release:all -- --tag <version>
 ```
 
-构建产物将写入 `dist/release/obsidian/<version>/`。
+构建产物将直接写入 `dist/<version>/`，与同版本的浏览器和 VS Code 产物并列；目录包含 `main.js`、`manifest.json`、`styles.css` 与 Obsidian ZIP。tag、审核和验证要求见 [Obsidian 发布与审查手册](../docs/OBSIDIAN-RELEASE.md)。
 
 Release tag 必须与 `manifest.json` 中的版本完全一致，且不能带 `v` 前缀。
 

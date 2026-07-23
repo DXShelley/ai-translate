@@ -1,6 +1,6 @@
 {
   "name": "temp-translate",
-  "version": "7.0.1",
+  "version": "7.0.9",
   "description": "一个浏览器扩展原型，用于在网页中进行本地或 OpenAI 兼容模型翻译。扩展重点支持划词、句子、段落三种粒度，并在同一弹框内复用上下文和已返回结果，减少重复请求。",
   "main": "index.js",
   "directories": {
@@ -12,8 +12,11 @@
     "build:chrome": "node scripts/build.js chrome",
     "build:edge": "node scripts/build.js edge",
     "release:all": "node scripts/release-all.js",
-    "release:obsidian": "node scripts/release-all.js --obsidian",
-    "test": "npm run build && node --test test/*.test.js"
+    "verify:obsidian-release": "node scripts/verify-obsidian-release.js",
+    "test:browser": "npm run build && node --test test/*.test.js",
+    "test:vscode": "npm --prefix vscode-extension run check",
+    "test:obsidian": "npm --prefix obsidian-plugin run check",
+    "test": "npm run test:browser && npm run test:vscode && npm run test:obsidian"
   },
   "keywords": [],
   "author": "",

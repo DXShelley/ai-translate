@@ -1,6 +1,6 @@
 importScripts("vendor/jsonrepair.min.js");
 importScripts("browser-adapter.js");
-importScripts("../shared/vocabulary.js");
+importScripts("vocabulary.js");
 
 const DEFAULT_PROFILE = {
   id: "default",

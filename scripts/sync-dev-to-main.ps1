@@ -10,27 +10,17 @@ $necessaryPaths = @(
   "LICENSE",
   "README.md",
   "README.zh-CN.md",
-  "manifest.json",
-  "ob-translate.png",
   "package.json",
   "package-lock.json",
   "docs",
   "obsidian-plugin",
-  "packages",
+  "browser-extensions",
   "scripts",
-  "shared",
   "src",
   "test",
-  "test-edge-check",
-  "test-ff1",
-  "test-ff2",
-  "test-firefox2",
   "vscode-extension",
   "website",
-  ".github",
-  "AI-Translate-chrome.zip",
-  "AI-Translate-edge.zip",
-  "AI-Translate-firefox.zip"
+  ".github"
 )
 
 Push-Location $root

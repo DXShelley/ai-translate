@@ -1,7 +1,7 @@
 "use strict";
 
 const vscode = require("vscode");
-const vocabulary = require("./shared/vocabulary.js");
+const vocabulary = require("./vocabulary.js");
 
 const ENGLISH_WORD_PATTERN = /^[A-Za-z][A-Za-z'-]*$/;
 const CHINESE_WORD_PATTERN = /^[\u3400-\u9fff]{1,12}$/;

@@ -3,7 +3,7 @@
   "displayName": "AI Translate Hover",
   "description": "Translate a selected word after hovering it for one second.",
   "icon": "media/icon.png",
-  "version": "7.0.1",
+  "version": "7.0.9",
   "publisher": "DxShelley",
   "license": "MIT",
   "author": {
@@ -198,7 +198,7 @@
     ]
   },
   "scripts": {
-    "check": "node ../scripts/sync-vocabulary.js && node --check extension.js && node --test test/*.test.js",
-    "package": "node ../scripts/sync-vocabulary.js && npx @vscode/vsce package --out ../dist/ai-translate-hover-${npm_package_version}.vsix"
+    "check": "node ../scripts/vscode-build.js check",
+    "package": "node ../scripts/vscode-build.js package"
   }
 }
