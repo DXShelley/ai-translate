@@ -43,6 +43,19 @@ try {
       git checkout dev -- $path
     }
 
+    foreach ($trackedPath in (git ls-files)) {
+      $isNecessary = $false
+      foreach ($path in $necessaryPaths) {
+        if ($trackedPath -eq $path -or $trackedPath.StartsWith("$path/")) {
+          $isNecessary = $true
+          break
+        }
+      }
+      if (-not $isNecessary) {
+        git rm -- $trackedPath
+      }
+    }
+
     git add -- $necessaryPaths
     $mainStatus = git status --porcelain
     if ($mainStatus) {
