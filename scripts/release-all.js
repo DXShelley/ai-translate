@@ -27,6 +27,7 @@ const allPluginVersionFiles = [
   "browser-extensions/edge/manifest.json",
   "browser-extensions/firefox/manifest.json",
   "vscode-extension/package.json",
+  "manifest.json",
   "obsidian-plugin/package.json",
   "obsidian-plugin/manifest.json"
 ];

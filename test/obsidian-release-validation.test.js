@@ -15,6 +15,7 @@ const fixtureFiles = [
   "browser-extensions/edge/manifest.json",
   "browser-extensions/firefox/manifest.json",
   "vscode-extension/package.json",
+  "manifest.json",
   "obsidian-plugin/manifest.json",
   "obsidian-plugin/package.json",
   "obsidian-plugin/package-lock.json",
@@ -63,6 +64,17 @@ test("rejects an Obsidian description without punctuation", (context) => {
 
   const result = validateRepository({ root: fixtureRoot });
   assert.ok(result.errors.some((error) => error.includes("description must end with punctuation")));
+});
+
+test("rejects a root manifest that differs from the Obsidian plugin manifest", (context) => {
+  const fixtureRoot = createFixture(context);
+  const manifestPath = path.join(fixtureRoot, "manifest.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  manifest.version = "7.0.8";
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+  const result = validateRepository({ root: fixtureRoot });
+  assert.ok(result.errors.some((error) => error.includes("Root manifest.json must match")));
 });
 
 test("rejects legacy and declarative settings definitions together", (context) => {

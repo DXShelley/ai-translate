@@ -6,7 +6,7 @@
 
 ### 版本与 tag
 
-- `obsidian-plugin/manifest.json`、`obsidian-plugin/package.json` 和 `obsidian-plugin/package-lock.json` 的 Obsidian 插件版本必须一致，并使用 `x.y.z` 格式。
+- 根目录 `manifest.json`、`obsidian-plugin/manifest.json`、`obsidian-plugin/package.json` 和 `obsidian-plugin/package-lock.json` 的 Obsidian 插件版本必须一致，并使用 `x.y.z` 格式。
 - GitHub Release tag 必须与所有插件版本完全一致，不能带 `v`。例如版本 `7.0.9` 必须使用 tag `7.0.9`，不能使用 `v7.0.9`。
 - Chrome、Edge、Firefox、VS Code 和 Obsidian 的版本必须完全一致；只支持完整发布。
 
@@ -20,6 +20,7 @@
 
 ### manifest
 
+- Obsidian 社区插件扫描器只读取默认分支根目录的 `manifest.json`。该文件必须存在、可读，并与 `obsidian-plugin/manifest.json` 完全一致；主分支同步脚本也必须保留它。
 - `id` 只能包含小写字母、数字和连字符。
 - `name`、`description` 和 `author` 不能为空。
 - `authorUrl` 必须使用 HTTPS。
