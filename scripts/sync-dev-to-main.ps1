@@ -10,6 +10,7 @@ $necessaryPaths = @(
   "LICENSE",
   "README.md",
   "README.zh-CN.md",
+  "manifest.json",
   "package.json",
   "package-lock.json",
   "docs",

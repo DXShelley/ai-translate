@@ -9,6 +9,7 @@ const VERSION_FILES = [
   "browser-extensions/edge/manifest.json",
   "browser-extensions/firefox/manifest.json",
   "vscode-extension/package.json",
+  "manifest.json",
   "obsidian-plugin/package.json",
   "obsidian-plugin/manifest.json"
 ];
@@ -34,6 +35,7 @@ function compareVersions(left, right) {
 function validateRepository({ root = path.resolve(__dirname, ".."), tag, assetsDir } = {}) {
   const errors = [];
   const pluginManifest = readJson(root, "obsidian-plugin/manifest.json", errors);
+  const rootManifest = readJson(root, "manifest.json", errors);
   const rootPackage = readJson(root, "package.json", errors);
   const pluginPackage = readJson(root, "obsidian-plugin/package.json", errors);
   const rootLock = readJson(root, "package-lock.json", errors);
@@ -58,6 +60,9 @@ function validateRepository({ root = path.resolve(__dirname, ".."), tag, assetsD
   if (typeof pluginManifest.isDesktopOnly !== "boolean") errors.push("The Obsidian manifest isDesktopOnly field must be boolean.");
   if (typeof pluginManifest.description === "string" && !/[.!?]$/.test(pluginManifest.description.trim())) {
     errors.push("The Obsidian plugin description must end with punctuation (., !, or ?).");
+  }
+  if (JSON.stringify(rootManifest) !== JSON.stringify(pluginManifest)) {
+    errors.push("Root manifest.json must match obsidian-plugin/manifest.json for Obsidian Community plugin scanning.");
   }
 
   if (SEMVER.test(minAppVersion || "")) {
