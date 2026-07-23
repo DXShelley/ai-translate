@@ -81,6 +81,45 @@ Pop-Location
 2. 在 `about:config` 中将 `xpinstall.signatures.required` 设为 `false`
 3. 将解压后的文件夹拖拽到 `about:addons` 页面
 
+## 外部单词本配置示例
+
+在扩展的配置页打开“全局设置”，找到“外部单词本适配”，按以下内容填写：
+
+| 配置项 | 值 |
+| --- | --- |
+| 单词本适配 | 启用 |
+| 查询后自动收藏 | 按需选择 |
+| 请求方法 | `POST` |
+| 认证方式 | `Bearer Token` |
+| 单词本 API 地址 | `https://macosx.kooldns.cn/wordbook/api/v1/words` |
+| 认证凭据 | 你的单词本密钥 |
+
+请求头：
+
+```json
+{
+  "Content-Type": "application/json"
+}
+```
+
+请求体模板：
+
+```json
+{
+  "original": "{{original}}",
+  "translation": "{{translation}}",
+  "language": "{{language}}",
+  "phoneticUs": "{{phoneticUs}}",
+  "phoneticUk": "{{phoneticUk}}",
+  "audioUsUrl": "{{audioUsUrl}}",
+  "audioUkUrl": "{{audioUkUrl}}",
+  "example": "{{example}}",
+  "source": "{{source}}"
+}
+```
+
+`original` 为必填字段；`language` 默认发送 `en`。其余字段会由词典结果填充，缺少可选数据时传递空字符串。认证凭据会作为 `Authorization: Bearer <token>` 请求头发送，不应填写到“请求头”文本框中。
+
 #### 已知问题：签名验证
 
 Firefox 默认要求扩展签名。如果安装时提示「压缩包似乎已损坏」：
