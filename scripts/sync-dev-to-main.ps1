@@ -43,15 +43,9 @@ try {
       git checkout dev -- $path
     }
 
+    $devTrackedPaths = @(git ls-tree -r --name-only dev)
     foreach ($trackedPath in (git ls-files)) {
-      $isNecessary = $false
-      foreach ($path in $necessaryPaths) {
-        if ($trackedPath -eq $path -or $trackedPath.StartsWith("$path/")) {
-          $isNecessary = $true
-          break
-        }
-      }
-      if (-not $isNecessary) {
+      if ($devTrackedPaths -notcontains $trackedPath) {
         git rm -- $trackedPath
       }
     }
