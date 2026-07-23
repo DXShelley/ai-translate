@@ -1,12 +1,12 @@
 {
   "name": "ai-translate-obsidian",
-  "version": "7.0.8",
+  "version": "7.0.9",
   "description": "AI Translate dictionary and translation plugin for Obsidian",
   "private": true,
   "scripts": {
     "build": "node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",
-    "check": "npm run build && tsc --noEmit && node --test test/*.test.js"
+    "check": "npm run build && tsc --noEmit && node --test ../test/obsidian/*.test.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

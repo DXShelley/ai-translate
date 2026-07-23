@@ -1,0 +1,54 @@
+name: Release AI Translate
+
+on:
+  push:
+    tags:
+      - "[0-9]*.[0-9]*.[0-9]*"
+
+permissions:
+  contents: write
+  attestations: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            obsidian-plugin/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: obsidian-plugin
+      - run: npm ci
+        working-directory: vscode-extension
+      - run: npm run release:all -- --tag "$GITHUB_REF_NAME"
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/${{ github.ref_name }}/main.js
+            dist/${{ github.ref_name }}/manifest.json
+            dist/${{ github.ref_name }}/styles.css
+            dist/${{ github.ref_name }}/ai-translate-obsidian-${{ github.ref_name }}.zip
+            dist/${{ github.ref_name }}/AI-Translate-chrome.zip
+            dist/${{ github.ref_name }}/AI-Translate-edge.zip
+            dist/${{ github.ref_name }}/AI-Translate-firefox.zip
+            dist/${{ github.ref_name }}/ai-translate-hover-${{ github.ref_name }}.vsix
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: AI Translate ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/${{ github.ref_name }}/main.js
+            dist/${{ github.ref_name }}/manifest.json
+            dist/${{ github.ref_name }}/styles.css
+            dist/${{ github.ref_name }}/ai-translate-obsidian-${{ github.ref_name }}.zip
+            dist/${{ github.ref_name }}/AI-Translate-chrome.zip
+            dist/${{ github.ref_name }}/AI-Translate-edge.zip
+            dist/${{ github.ref_name }}/AI-Translate-firefox.zip
+            dist/${{ github.ref_name }}/ai-translate-hover-${{ github.ref_name }}.vsix

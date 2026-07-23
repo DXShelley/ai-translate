@@ -19,8 +19,8 @@ npm ci
 npm run build
 ```
 
-- Firefox：`AI-Translate-firefox.zip`
-- Edge：`AI-Translate-edge.zip`
+- Firefox：`dist/<version>/AI-Translate-firefox.zip`
+- Edge：`dist/<version>/AI-Translate-edge.zip`
 
 ## Firefox Add-ons
 
@@ -75,13 +75,13 @@ This add-on is built from the public source code:
 https://github.com/DXShelley/ai-translate
 
 Build instructions:
-1. Install Node.js (tested with a current LTS version) and Python 3.
+1. Install Node.js (tested with a current LTS version).
 2. Clone the repository and check out commit [COMMIT].
 3. Run: npm ci
 4. Run: npm run build
-5. Submit the generated AI-Translate-firefox.zip from the repository root.
+5. Submit the generated `dist/<version>/AI-Translate-firefox.zip`.
 
-The build script generates browser-specific packages under packages/ and produces AI-Translate-firefox.zip. The add-on is a Manifest V2 extension. It has no data collection; user-configured translation and optional vocabulary API requests are sent only to endpoints chosen by the user.
+The build script generates browser-specific packages under `browser-extensions/` and writes `AI-Translate-firefox.zip` to `dist/<version>/`. The add-on is a Manifest V2 extension. It has no data collection; user-configured translation and optional vocabulary API requests are sent only to endpoints chosen by the user.
 ```
 
 ## Microsoft Edge Add-ons
@@ -108,7 +108,7 @@ Edge 发行说明与 Firefox 保持相同；使用 Firefox 的“发行说明”
 
 ## 提交检查
 
-- 版本号与 `package.json`、`packages/firefox/manifest.json`、`packages/edge/manifest.json` 一致。
+- 版本号与 `package.json`、`browser-extensions/firefox/manifest.json`、`browser-extensions/edge/manifest.json` 一致。
 - 发行说明只陈述已交付、用户可感知的变化。
 - Firefox 审核备注中的 `[COMMIT]` 已替换为本次发布提交的完整 SHA。
 - 上传的 zip 为本次 `npm run build` 生成的对应浏览器包。

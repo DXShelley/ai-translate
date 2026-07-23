@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const vocabulary = require("../shared/vocabulary.js");
+const vocabulary = require("../src/vocabulary.js");
 
 test("builds a browser vocabulary request with an idempotency key", () => {
   const headers = { "Content-Type": "application/json", ...vocabulary.parseHeaders('{"X-Client":"browser"}') };

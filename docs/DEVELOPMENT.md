@@ -1,5 +1,7 @@
 # 开发规范
 
+本页记录浏览器扩展的行为约束、验证与分支规范。组件边界和产物位置见 [架构说明](ARCHITECTURE.md)；安装与浏览器兼容性问题见 [浏览器扩展指南](BROWSER-EXTENSIONS.md)；完整导航见 [文档索引](README.md)。
+
 本文档记录 AI Translate 的开发约定。后续功能调整应优先遵循本文档，避免破坏现有交互、缓存和模型兼容行为。
 
 ## 架构边界
@@ -74,9 +76,9 @@
 
 `scripts/build.js` 负责生成三类浏览器包和 zip：
 
-- `packages/chrome`：Manifest V3
-- `packages/edge`：Manifest V3
-- `packages/firefox`：Manifest V2
+- `browser-extensions/chrome`：Manifest V3
+- `browser-extensions/edge`：Manifest V3
+- `browser-extensions/firefox`：Manifest V2
 
 构建规则：
 
@@ -159,7 +161,7 @@ vocabularyCustomHeaders
 - 开启 `settings.requestLogging` 时，以 `type: "vocabulary"` 写入 `requestLogs`，包含 URL、请求头、请求体、响应、状态码、耗时和错误；配置解析失败也必须写入错误日志。配置页日志详情必须展示 HTTP 状态码。保存前必须脱敏请求头中的 `authorization`、`apiKey`、`token`、`secret` 等字段。
 - 单词本配置会随全局配置导入和导出；新增字段时需要同步 `DEFAULT_CONFIG`、`normalizeSettings`、`readSettingsFromForm` 与 `GLOBAL_SETTING_FIELDS`。
 - VS Code 插件使用同名的 `aiTranslateHover.vocabulary*` 设置，并在 `package.json` 的 `AI Translate Hover: Vocabulary` 设置组中声明。`vscode-extension/extension.js` 在每次成功的英文词典查询后异步调用 `saveVocabulary`；即使词典信息来自缓存也必须调用一次。自动收藏关闭时，悬停 Markdown 在词条标题下方显示 `aiTranslateHover.saveVocabulary` 命令链接。该请求不得阻塞 Hover 返回，且仅接受英文单词。Obsidian、VS Code 与浏览器后台必须使用一致的并发合并和 `Idempotency-Key` 规则。
-- `shared/vocabulary.js` 是单词本协议的唯一实现，负责请求体模板、请求头、认证、幂等键和同词并发合并。浏览器构建直接打入该文件；Obsidian 由 esbuild 打包；VS Code 在 `npm run check` 与 `npm run package` 前通过 `scripts/sync-vocabulary.js` 同步到扩展目录。平台代码只保留各自的网络传输、日志和 UI 反馈。
+- `src/vocabulary.js` 是单词本协议的唯一实现，负责请求体模板、请求头、认证、幂等键和同词并发合并。浏览器构建直接打入该文件；Obsidian 由 esbuild 打包；VS Code 通过 `scripts/vscode-build.js` 仅在检查和打包期间注入临时副本，并在任务结束后清理。平台代码只保留各自的网络传输、日志和 UI 反馈。
 
 用户要求清空 Codex 会话时，只清理会话目录和索引文件：
 
@@ -499,27 +501,17 @@ git checkout dev
 LICENSE
 README.md
 README.zh-CN.md
-manifest.json
-ob-translate.png
 package.json
 package-lock.json
 docs/
 obsidian-plugin/
-packages/
+browser-extensions/
 scripts/
-shared/
 src/
 test/
-test-edge-check/
-test-ff1/
-test-ff2/
-test-firefox2/
 vscode-extension/
 website/
 .github/
-AI-Translate-chrome.zip
-AI-Translate-edge.zip
-AI-Translate-firefox.zip
 ```
 
 不得将以下内容提交到 `main`：
@@ -535,7 +527,7 @@ build/
 *.bak
 ```
 
-其中 `src/vendor/` 是浏览器扩展运行依赖目录，属于必要文件，必须保留。`packages/` 提供各浏览器清单与生成包目录，`shared/` 提供跨插件单词本协议实现，`test*` 目录保留浏览器测试与兼容性夹具，`obsidian-plugin/` 和 `vscode-extension/` 分别包含两类插件的源码、测试与打包配置，也都属于必要文件；`dist/` 中的本地发布产物不进入 `main`。
+其中 `src/vendor/` 是浏览器扩展运行依赖目录，属于必要文件，必须保留。`browser-extensions/` 提供各浏览器清单、静态图标和构建工作目录，`src/vocabulary.js` 提供跨插件单词本协议实现，所有自动化测试与浏览器兼容性夹具均位于 `test/`，`obsidian-plugin/` 和 `vscode-extension/` 分别只包含插件源码与打包配置，也都属于必要文件；`dist/` 中的本地发布产物不进入 `main`。
 
 ### dev 到 main 的同步流程
 
@@ -556,7 +548,7 @@ powershell -ExecutionPolicy Bypass -File scripts\sync-dev-to-main.ps1 -Push
 1. 要求当前分支必须是 `dev`。
 2. 要求工作区必须干净。
 3. 切换到 `main`。
-4. 只从 `dev` 同步必要文件范围，包括浏览器 zip 与源码、共享模块、VS Code 和 Obsidian 插件、项目文档、支持页与 Pages 工作流。
+4. 只从 `dev` 同步必要文件范围，包括源码、VS Code 和 Obsidian 插件、项目文档、支持页与 Pages 工作流。
 5. 如有变更，自动提交到 `main`。
 6. 返回 `dev`。
 7. 使用 `-Push` 时推送 `dev` 和 `main`。
@@ -567,5 +559,7 @@ powershell -ExecutionPolicy Bypass -File scripts\sync-dev-to-main.ps1 -Push
 2. 再同步必要文件到 `main`。
 3. 推送时同时推送 `dev` 和 `main`。
 4. 发布版本时在 `main` 上打 tag。
-5. 所有插件的主版本号必须一致。全平台 Release 必须执行 `npm run release:all`，构建 Chrome、Edge、Firefox、VS Code 与 Obsidian；浏览器和 VS Code 产物从 `dist/release/all/<version>/` 上传到 `v<version>` 标签的 Release。
-6. Obsidian 产物位于 `dist/release/obsidian/<version>/`，仅上传其中的 `main.js`、`manifest.json`、`styles.css`，Release 标签必须为无 `v` 前缀的 `<version>`。Obsidian 可独立递增补丁版本，但不得改变其主版本号。
+5. 所有 GitHub Release tag 必须使用无 `v` 前缀的精确版本号。全平台 Release 必须执行 `npm run release:all -- --tag <version>`，并要求 Chrome、Edge、Firefox、VS Code 与 Obsidian 使用完全一致的版本；所有产物统一写入 `dist/<version>/`。
+6. Obsidian 只随完整发布交付；`main.js`、`manifest.json`、`styles.css` 和 `ai-translate-obsidian-<version>.zip` 与浏览器和 VS Code 产物一起直接写入 `dist/<version>/`。
+
+完整发布必须执行 `npm run release:all -- --tag <version>`。该命令会自动检查所有插件版本、Obsidian manifest、最低 API 基线、设置实现、tag 和三文件资产。完整要求、官方扫描方式、历史问题与修复方案见 [Obsidian 发布与审查手册](OBSIDIAN-RELEASE.md)。

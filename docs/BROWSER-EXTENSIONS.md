@@ -1,12 +1,14 @@
 # 浏览器扩展安装说明
 
+本页面面向浏览器扩展的安装、构建和兼容性排查。项目级架构见 [架构说明](ARCHITECTURE.md)，代码行为约束见 [开发规范](DEVELOPMENT.md)，商店提交见 [商店提交文案](STORE-SUBMISSION.md)。
+
 ## 包文件
 
 | 文件 | 浏览器 | 清单版本 |
 |------|--------|----------|
-| `AI-Translate-chrome.zip` | Chrome | MV3 |
-| `AI-Translate-firefox.zip` | Firefox | MV2 |
-| `AI-Translate-edge.zip` | Edge | MV3 |
+| `dist/<version>/AI-Translate-chrome.zip` | Chrome | MV3 |
+| `dist/<version>/AI-Translate-firefox.zip` | Firefox | MV2 |
+| `dist/<version>/AI-Translate-edge.zip` | Edge | MV3 |
 
 ## 构建与验证
 
@@ -16,20 +18,22 @@
 npm run build
 ```
 
+浏览器包使用 `browser-extensions/<browser>/icons/` 中已定稿的 `16px`、`48px` 和 `128px` 静态图标；构建不会生成或转换图标。
+
 构建脚本会刷新：
 
-- `packages/chrome`
-- `packages/edge`
-- `packages/firefox`
-- 三个根目录发布包 zip
+- `browser-extensions/chrome`
+- `browser-extensions/edge`
+- `browser-extensions/firefox`
+- `dist/<version>/` 下的三个浏览器发布包 ZIP
 
 发布前建议检查 zip 内版本和后台脚本：
 
 ```powershell
-python -c "import zipfile,json; files=['AI-Translate-chrome.zip','AI-Translate-edge.zip','AI-Translate-firefox.zip']; [print(f, json.loads(zipfile.ZipFile(f).read('manifest.json'))['version'], 'importScripts' in zipfile.ZipFile(f).read('background.js').decode('utf-8')) for f in files]"
+python -c "import zipfile,json; v='7.0.9'; files=[f'dist/{v}/AI-Translate-{b}.zip' for b in ('chrome','edge','firefox')]; [print(f, json.loads(zipfile.ZipFile(f).read('manifest.json'))['version'], 'importScripts' in zipfile.ZipFile(f).read('background.js').decode('utf-8')) for f in files]"
 ```
 
-期望输出中版本为 `7.0.1`，且 `importScripts` 为 `False`。
+期望输出中版本为 `7.0.9`，且 `importScripts` 为 `False`。
 
 ## VS Code 扩展构建
 
@@ -42,7 +46,7 @@ npm run package
 Pop-Location
 ```
 
-期望生成：`dist/ai-translate-hover-7.0.1.vsix`。发布前使用 VS Code 的 `Install from VSIX...` 验证安装，并检查选词悬停、用户自定义快捷键、词典发音、模型回退，以及单词本自动收藏和手动“收藏”按钮。确认单词本设置显示在 `AI Translate Hover: Vocabulary` 设置组。
+期望生成：`dist/7.0.9/ai-translate-hover-7.0.9.vsix`。发布前使用 VS Code 的 `Install from VSIX...` 验证安装，并检查选词悬停、用户自定义快捷键、词典发音、模型回退，以及单词本自动收藏和手动“收藏”按钮。确认单词本设置显示在 `AI Translate Hover: Vocabulary` 设置组。
 
 ## 项目功能说明页与 Pages 部署
 
@@ -107,7 +111,7 @@ Firefox 默认要求扩展签名。如果安装时提示「压缩包似乎已损
 1. 用 Windows 资源管理器解压 zip，确认图标文件存在
 2. 检查 `icons/` 目录下的文件名为 `icon16.png`、`icon48.png`、`icon128.png`
 3. manifest.json 中 icons 配置应与实际文件名一致
-4. 验证 zip 文件：`python -c "import zipfile; z=zipfile.ZipFile('AI-Translate-firefox.zip'); print(z.testzip())"`
+4. 验证 ZIP 文件：`python -c "import zipfile; z=zipfile.ZipFile('dist/7.0.9/AI-Translate-firefox.zip'); print(z.testzip())"`
 
 **创建 zip 的正确方法**（确保兼容性）：
 ```python
@@ -115,10 +119,10 @@ import zipfile, os
 
 # CRITICAL: manifest.json must be first in the ZIP for Firefox
 files = []
-for root, dirs, filenames in os.walk('packages/firefox'):
+for root, dirs, filenames in os.walk('browser-extensions/firefox'):
     for filename in filenames:
         file_path = os.path.join(root, filename)
-        arcname = os.path.relpath(file_path, 'packages/firefox')
+        arcname = os.path.relpath(file_path, 'browser-extensions/firefox')
         files.append((file_path, arcname))
 
 # Sort with manifest.json FIRST
@@ -195,7 +199,7 @@ Edge 插件创建/发布入口：
 
 上传包：
 
-- `AI-Translate-edge.zip`
+- `dist/<version>/AI-Translate-edge.zip`
 
 权限说明建议：
 
@@ -204,25 +208,10 @@ Edge 插件创建/发布入口：
 - `contextMenus`：右键翻译。
 - `tts`：朗读英文单词和例句。
 
-Edge 商店图片资源：
-
-| 文件 | 用途 | 尺寸 |
-|------|------|------|
-| `assets/edge-store/edge-logo-300.png` | 扩展徽标 | 300 x 300 |
-| `assets/edge-store/screenshot-translation-1280x800.png` | 截图 | 1280 x 800 |
-| `assets/edge-store/screenshot-settings-1280x800.png` | 截图 | 1280 x 800 |
-| `assets/edge-store/screenshot-packages-1280x800.png` | 截图 | 1280 x 800 |
-
-重新生成：
-
-```powershell
-python scripts\generate-edge-store-assets.py
-```
-
 ### 文件结构
 
 ```
-packages/
+browser-extensions/
 ├── chrome/
 │   ├── manifest.json      (MV3)
 │   ├── background.js
@@ -250,13 +239,13 @@ packages/
 import zipfile, os
 
 files = []
-for root, dirs, filenames in os.walk('packages/firefox'):
+for root, dirs, filenames in os.walk('browser-extensions/firefox'):
     for filename in filenames:
         # WebExtensions MV2 不需要 install.rdf
         if filename == 'install.rdf':
             continue
         file_path = os.path.join(root, filename)
-        arcname = os.path.relpath(file_path, 'packages/firefox')
+        arcname = os.path.relpath(file_path, 'browser-extensions/firefox')
         files.append((file_path, arcname))
 
 # manifest.json 必须排在第一位

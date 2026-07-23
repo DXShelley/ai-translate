@@ -1,5 +1,5 @@
 import { App, Editor, Modal, Notice, Plugin, PluginSettingTab, Setting, requestUrl, setIcon } from "obsidian";
-import vocabularyModule from "../../shared/vocabulary.js";
+import vocabularyModule from "../../src/vocabulary.js";
 
 type VocabularyApi = {
   buildPayload(word: string, info: WordInfo): Record<string, string>;

@@ -2,9 +2,9 @@
 
 > Look up English words, translate selected text, and optionally save vocabulary without leaving Obsidian.
 
-[简体中文](README.zh-CN.md) · [Features](#features) · [Install](#install) · [Quick start](#quick-start)
+[简体中文](README.zh-CN.md) · [Project docs](../docs/README.md) · [Features](#features) · [Install](#install) · [Quick start](#quick-start)
 
-![AI Translate showing phonetics, definitions, pronunciation, and vocabulary saving in Obsidian](../ob-translate.png)
+For contributor-facing product and interaction principles, see the [product brief](PRODUCT.md).
 
 AI Translate fits into your Obsidian reading and writing flow. Select text to look it up in place, use built-in Youdao mobile services when available, or configure your own OpenAI-compatible API. English dictionary results can also be sent to an external vocabulary service.
 
@@ -106,13 +106,13 @@ npm run check
 
 The plugin compiles against the Obsidian `1.12.2` API type package and declares Obsidian `1.12.2` as its minimum app version. It deliberately uses the traditional `PluginSettingTab.display()` API so the same settings page runs on `1.12.2` and newer releases without maintaining a second set of field definitions.
 
-For an Obsidian-only release build from the repository root:
+Obsidian is released only as part of the complete release from the repository root:
 
 ```sh
-npm run release:obsidian
+npm run release:all -- --tag <version>
 ```
 
-The release assets are written to `dist/release/obsidian/<version>/`.
+The release assets are written directly to `dist/<version>/`, alongside the browser and VS Code release files for the same version. The directory contains `main.js`, `manifest.json`, `styles.css`, and the matching Obsidian ZIP. See the [Obsidian release guide](../docs/OBSIDIAN-RELEASE.md) for tag, review, and validation requirements.
 
 The release tag must exactly match `manifest.json#version` and must not start with `v`.
 

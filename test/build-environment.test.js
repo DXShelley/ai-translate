@@ -9,15 +9,18 @@ test("browser release archives are built without Python", () => {
   const buildScript = fs.readFileSync(path.join(root, "scripts", "build.js"), "utf8");
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 
-  assert.match(buildScript, /ZipArchive/);
+  const archiveUtility = fs.readFileSync(path.join(root, "scripts", "release-utils.js"), "utf8");
+  assert.match(archiveUtility, /ZipArchive/);
   assert.doesNotMatch(buildScript, /child_process|python3?|process\.env\.PYTHON/i);
   assert.equal(packageJson.engines.node, ">=18.17.0");
 });
 
-test("browser build emits valid ZIP signatures", () => {
+test("browser build writes ZIP archives to the versioned release directory", () => {
+  const buildScript = fs.readFileSync(path.join(root, "scripts", "build.js"), "utf8");
+
+  assert.match(buildScript, /releaseDirectory\(process\.cwd\(\), version\)/);
   for (const browser of ["chrome", "edge", "firefox"]) {
-    const archive = fs.readFileSync(path.join(root, `AI-Translate-${browser}.zip`));
-    assert.equal(archive.subarray(0, 2).toString("ascii"), "PK", `${browser} archive must be a ZIP file`);
+    assert.match(buildScript, new RegExp(`AI-Translate-\\$\\{browser\\}\\.zip`));
   }
 });
 

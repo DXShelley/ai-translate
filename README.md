@@ -2,19 +2,19 @@
 
 AI Translate is a multi-platform toolkit for dictionary lookup and selected-text translation. It provides extensions for Chrome, Edge, Firefox, VS Code, and Obsidian, with shared vocabulary request behavior across all supported platforms.
 
-[Simplified Chinese](README.zh-CN.md) | [Obsidian documentation](obsidian-plugin/README.md) | [Obsidian 中文文档](obsidian-plugin/README.zh-CN.md) | [VS Code documentation](vscode-extension/README.md) | [Releases](https://github.com/DXShelley/ai-translate/releases)
+[Simplified Chinese](README.zh-CN.md) | [Documentation index](docs/README.md) | [Architecture](docs/ARCHITECTURE.md) | [VS Code documentation](vscode-extension/README.md) | [Obsidian documentation](obsidian-plugin/README.md) | [Releases](https://github.com/DXShelley/ai-translate/releases)
 
 ## Platform Overview
 
 | Platform | Primary workflow | Package |
 | --- | --- | --- |
-| Chrome | Translate selected words, sentences, and paragraphs on web pages. | `AI-Translate-chrome.zip` |
-| Edge | Uses the Chrome feature set with Edge-compatible packaging and TTS fallback. | `AI-Translate-edge.zip` |
-| Firefox | Uses the same translation workflow through a Manifest V2-compatible package. | `AI-Translate-firefox.zip` |
-| VS Code | Shows dictionary and translation results while reading English Skill documents. | `ai-translate-hover-<version>.vsix` |
-| Obsidian | Looks up English words, translates selected note text, and optionally saves vocabulary. | `main.js`, `manifest.json`, `styles.css` |
+| Chrome | Translate selected words, sentences, and paragraphs on web pages. | `dist/<version>/AI-Translate-chrome.zip` |
+| Edge | Uses the Chrome feature set with Edge-compatible packaging and TTS fallback. | `dist/<version>/AI-Translate-edge.zip` |
+| Firefox | Uses the same translation workflow through a Manifest V2-compatible package. | `dist/<version>/AI-Translate-firefox.zip` |
+| VS Code | Shows dictionary and translation results while reading English Skill documents. | `dist/<version>/ai-translate-hover-<version>.vsix` |
+| Obsidian | Looks up English words, translates selected note text, and optionally saves vocabulary. | `dist/<version>/main.js`, `manifest.json`, `styles.css`, and the matching ZIP |
 
-All plugins use major version `7`. Obsidian patch versions may advance independently, but every platform must keep the same major version.
+All plugins use the same release version. A release is valid only when Chrome, Edge, Firefox, VS Code, and Obsidian match exactly.
 
 ## Features
 
@@ -74,7 +74,7 @@ For manual installation, download `main.js`, `manifest.json`, and `styles.css` f
 <vault>/.obsidian/plugins/ai-translate/
 ```
 
-Obsidian release tags do not use a `v` prefix. For example, manifest version `7.0.8` must use release tag `7.0.8`, not `v7.0.8`.
+Release tags do not use a `v` prefix. For example, version `7.0.9` must use release tag `7.0.9`, not `v7.0.9`.
 
 ## Configuration
 
@@ -97,7 +97,7 @@ Supported request options include:
 - An `Idempotency-Key` for each actual write unless the user supplies one.
 - Concurrent request merging for the same normalized word.
 
-The shared protocol implementation is in `shared/vocabulary.js`. Platform-specific code owns only transport, logging, and UI feedback.
+The shared protocol implementation is in `src/vocabulary.js`. Platform-specific code owns only transport, logging, and UI feedback.
 
 ## Privacy and Security
 
@@ -114,7 +114,7 @@ Review the privacy behavior of every endpoint you configure. Local endpoints rem
 
 - Node.js `18.17.0` or later. CI and release workflows currently use Node.js `22`.
 - npm with the repository lockfiles.
-- Python is not required for browser or Obsidian release builds.
+- No Python dependency is required for browser or Obsidian release builds.
 
 ### Install dependencies
 
@@ -145,55 +145,50 @@ npm --prefix vscode-extension run check
 npm --prefix vscode-extension run package
 ```
 
-The browser build writes browser-specific directories under `packages/` and refreshes the three root ZIP files. ZIP creation runs entirely in Node.js and keeps `manifest.json` as the first archive entry.
+The browser build writes browser-specific directories under `browser-extensions/` and writes the three distributable ZIP files to `dist/`. ZIP creation runs in Node.js and keeps `manifest.json` as the first archive entry.
 
 ## Release Process
 
 ### Full multi-platform release
 
-A full release requires matching Chrome, Edge, Firefox, and VS Code versions. The Obsidian version must share their major version.
+A full release requires matching versions for every plugin and an exact, unprefixed release tag.
 
 ```sh
-npm run release:all
+npm run release:all -- --tag <version>
 ```
 
-This command builds Chrome, Edge, Firefox, VS Code, and Obsidian. Browser and VS Code assets are written to `dist/release/all/<version>/`; Obsidian assets are written to `dist/release/obsidian/<obsidian-version>/`.
+This command builds Chrome, Edge, Firefox, VS Code, and Obsidian. All release assets are written directly to `dist/<version>/`. GitHub Release tags always use the exact version without a `v` prefix.
 
-Use `v<version>` for the browser/VS Code GitHub release. Create a separate `<obsidian-version>` release without `v` for Obsidian.
+### Release assets
 
-### Obsidian-only patch release
-
-```sh
-npm run release:obsidian
-```
-
-The command verifies matching root and Obsidian manifest versions, runs the Obsidian checks, and writes exactly these release assets:
+The complete release command verifies all plugin versions, runs every plugin check, and writes these Obsidian assets alongside the browser and VS Code packages:
 
 ```text
-dist/release/obsidian/<version>/main.js
-dist/release/obsidian/<version>/manifest.json
-dist/release/obsidian/<version>/styles.css
+dist/<version>/main.js
+dist/<version>/manifest.json
+dist/<version>/styles.css
+dist/<version>/ai-translate-obsidian-<version>.zip
 ```
 
-Pushing a numeric tag such as `7.0.8` triggers `.github/workflows/release-obsidian.yml`, which checks the plugin, creates artifact attestations, and publishes the GitHub Release.
+Pushing a numeric tag such as `7.0.9` triggers `.github/workflows/release-all.yml`, which rebuilds every plugin with the actual tag, creates artifact attestations, and publishes the complete GitHub Release. See the [Obsidian release and review guide](docs/OBSIDIAN-RELEASE.md) for Obsidian-specific requirements, known scanner findings, fixes, and post-release verification.
 
 ## Repository Layout
 
 | Path | Purpose |
 | --- | --- |
 | `src/` | Shared browser extension source. |
-| `packages/` | Generated Chrome, Edge, and Firefox package directories. |
-| `shared/` | Cross-platform vocabulary request implementation. |
+| `browser-extensions/` | Browser-specific manifests, static icons, and generated Chrome, Edge, and Firefox package directories. |
+| `src/vocabulary.js` | Cross-platform vocabulary request implementation. |
 | `vscode-extension/` | VS Code extension source, tests, and package configuration. |
 | `obsidian-plugin/` | Obsidian source, bundle, styles, tests, and dedicated documentation. |
 | `scripts/` | Browser and release build scripts. |
-| `test/` | Browser and shared regression tests. |
+| `test/` | Browser, VS Code, Obsidian, shared regression tests, and browser compatibility fixtures. |
 | `website/` | Project website source. |
 | `docs/` | Architecture, development, release, and store documentation. |
 
 ## Contributing and Support
 
-Before submitting a change, run the checks for every affected platform and include focused regression coverage. Architecture and behavior constraints are documented in [Development Guidelines](docs/DEVELOPMENT.md).
+Before submitting a change, run the checks for every affected platform and include focused regression coverage. Start with the [documentation index](docs/README.md); architecture and behavior constraints are documented in [Development Guidelines](docs/DEVELOPMENT.md).
 
 - Report reproducible defects or request features through [GitHub Issues](https://github.com/DXShelley/ai-translate/issues).
 - Download signed release assets from [GitHub Releases](https://github.com/DXShelley/ai-translate/releases).

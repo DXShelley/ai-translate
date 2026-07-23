@@ -1,6 +1,6 @@
 # AI Translate Hover for VS Code
 
-当前发布版本：`v7.0.1`。本项目同时维护浏览器扩展与 VS Code 扩展；浏览器构建说明见 [`docs/BROWSER-EXTENSIONS.md`](../docs/BROWSER-EXTENSIONS.md)。
+当前发布版本：`7.0.9`。本项目同时维护浏览器扩展与 VS Code 扩展。项目文档入口见 [docs/README.md](../docs/README.md)，架构与发布产物位置见 [架构说明](../docs/ARCHITECTURE.md)。
 
 选中一个英文单词或连续中文词语，将鼠标停在选区上超过一秒，会显示翻译悬浮框。
 
@@ -13,6 +13,8 @@
 在 VS Code Extensions 中搜索 `AI Translate Hover` 并安装。也可从 [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=DxShelley.ai-translate-hover) 安装。
 
 离线安装时，在 VS Code 中打开 Extensions，点击右上角 `...`，选择 `Install from VSIX...`，然后选择生成的 `.vsix` 文件。
+
+开发与打包命令、`dist/` 产物位置见 [开发规范](../docs/DEVELOPMENT.md)。
 
 ## 支持
 
